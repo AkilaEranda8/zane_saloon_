@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpass}
-      MYSQL_DATABASE: ${DB_NAME:-luxesalon}
+      MYSQL_DATABASE: ${DB_NAME:-zanesalon}
     ports:
       - "${DB_PORT:-3307}:3306"
     volumes:
@@ -39,8 +39,8 @@ services:
       DB_HOST: db
       DB_USER: root
       DB_PASS: ${DB_PASS:-rootpass}
-      DB_NAME: ${DB_NAME:-luxesalon}
-      JWT_SECRET: ${JWT_SECRET:-luxesalon_docker_jwt_secret_change_me}
+      DB_NAME: ${DB_NAME:-zanesalon}
+      JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
       PORT: 5000
     expose:
       - "5000"
@@ -80,8 +80,8 @@ services:
       DB_HOST: db
       DB_USER: root
       DB_PASS: ${DB_PASS:-rootpass}
-      DB_NAME: ${DB_NAME:-luxesalon}
-      JWT_SECRET: ${JWT_SECRET:-luxesalon_docker_jwt_secret_change_me}
+      DB_NAME: ${DB_NAME:-zanesalon}
+      JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
     command: node scripts/seedAll.js
     profiles:
       - seed

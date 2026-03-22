@@ -29,7 +29,7 @@ function InvoiceModal({ open, onClose, payment }) {
           <div style={{ width:48, height:48, borderRadius:14, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px', color:'#2563EB' }}>
             <IconReceipt />
           </div>
-          <h2 style={{ margin:0, fontFamily:"'Outfit',sans-serif", fontWeight:800, fontSize:20, color:'#101828' }}>LuxeSalon</h2>
+          <h2 style={{ margin:0, fontFamily:"'Outfit',sans-serif", fontWeight:800, fontSize:20, color:'#101828' }}>Zane Salon</h2>
           <p style={{ margin:'4px 0 0', color:'#98A2B3', fontSize:12 }}>Payment Receipt</p>
         </div>
         <div style={{ borderTop:'2px dashed #E4E7EC', paddingTop:16, marginBottom:16 }}>

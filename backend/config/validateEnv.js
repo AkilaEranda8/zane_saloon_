@@ -21,7 +21,7 @@ function validateEnv() {
   }
 
   // Warn about defaults
-  if (process.env.JWT_SECRET === 'luxesalon_jwt_secret_key_change_in_production') {
+  if (process.env.JWT_SECRET === 'zanesalon_jwt_secret_key_change_in_production') {
     console.warn('⚠  WARNING: Using default JWT_SECRET. Change it for production!');
   }
 }

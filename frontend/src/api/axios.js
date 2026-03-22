@@ -17,7 +17,7 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       window.location.pathname !== '/login'
     ) {
-      localStorage.removeItem('luxesalon_user');
+      localStorage.removeItem('zanesalon_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);

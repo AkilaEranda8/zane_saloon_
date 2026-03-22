@@ -62,7 +62,7 @@ export default function Layout() {
               <div style={{
                 fontFamily: "'Cormorant Garamond', serif",
                 fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: 1,
-              }}>LuxeSalon</div>
+              }}>Zane Salon</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>Management System</div>
             </div>
           )}

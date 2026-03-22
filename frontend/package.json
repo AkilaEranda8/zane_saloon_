@@ -1,7 +1,7 @@
 {
-  "name": "luxesalon-frontend",
+  "name": "zanesalon-frontend",
   "version": "1.0.0",
-  "description": "LuxeSalon Frontend",
+  "description": "Zane Salon Frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",

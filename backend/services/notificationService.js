@@ -108,7 +108,7 @@ async function sendEmail({ to, subject, html, meta = {} }) {
   let status = 'sent', errorMsg = null;
   try {
     await transporter.sendMail({
-      from:    process.env.EMAIL_FROM || `LuxeSalon <${process.env.EMAIL_USER}>`,
+      from:    process.env.EMAIL_FROM || `Zane Salon <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
@@ -163,7 +163,7 @@ async function sendWhatsApp({ to, message, meta = {} }) {
 }
 
 // ── Email HTML builder ────────────────────────────────────────────────────────
-function buildEmailWrapper(title, bodyHtml, branchName = 'LuxeSalon', branchPhone = '') {
+function buildEmailWrapper(title, bodyHtml, branchName = 'Zane Salon', branchPhone = '') {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -178,7 +178,7 @@ function buildEmailWrapper(title, bodyHtml, branchName = 'LuxeSalon', branchPhon
         <tr>
           <td style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);padding:32px 40px;text-align:center;">
             <div style="font-size:32px;margin-bottom:8px;">✂️</div>
-            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:1px;">LuxeSalon</h1>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:1px;">Zane Salon</h1>
             <p style="margin:6px 0 0;font-size:14px;color:#bfdbfe;">Premium Salon Management</p>
           </td>
         </tr>
@@ -247,10 +247,10 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
       <div style="margin:28px 0;padding:16px 20px;background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;">
         <p style="margin:0;font-size:14px;color:#1e40af;">📌 Please arrive 5 minutes early. Contact us if you need to reschedule.</p>
       </div>
-      <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>LuxeSalon</strong>! See you soon. ✨</p>`;
+      <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>Zane Salon</strong>! See you soon. ✨</p>`;
     await sendEmail({
       to:      email,
-      subject: 'Appointment Confirmed — LuxeSalon',
+      subject: 'Appointment Confirmed — Zane Salon',
       html:    buildEmailWrapper('Appointment Confirmed', body, brName, brPhone),
       meta,
     });
@@ -258,7 +258,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
 
   if (phone && flags.appt_confirmed_whatsapp) {
     const msg =
-      `✂️ *LuxeSalon — Appointment Confirmed!*\n\n` +
+      `✂️ *Zane Salon — Appointment Confirmed!*\n\n` +
       `Hi ${appointment.customer_name}, your booking is confirmed:\n\n` +
       `📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n💰 Amount: ${amount}\n\n` +
       `Please arrive 5 mins early. See you soon! 😊`;
@@ -314,10 +314,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       <div style="margin:24px 0;padding:16px 20px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
         <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
       </div>` : ''}
-      <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>LuxeSalon</strong>! 💜</p>`;
+      <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>Zane Salon</strong>! 💜</p>`;
     await sendEmail({
       to:      email,
-      subject: 'Payment Receipt — LuxeSalon',
+      subject: 'Payment Receipt — Zane Salon',
       html:    buildEmailWrapper('Payment Receipt', body, brName, brPhone),
       meta,
     });
@@ -325,12 +325,12 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
 
   if (phone && flags.payment_receipt_whatsapp) {
     let msg =
-      `🧾 *LuxeSalon — Payment Receipt*\n\n` +
+      `🧾 *Zane Salon — Payment Receipt*\n\n` +
       `Hi ${customerName}! Payment confirmed:\n\n` +
       `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
     if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
     if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
-    msg += `\n\nThank you for choosing LuxeSalon! 💜`;
+    msg += `\n\nThank you for choosing Zane Salon! 💜`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 }
@@ -342,7 +342,7 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) 
   if (!phone || !flags.loyalty_points_whatsapp) return;
 
   const name   = customer.name || 'Valued Customer';
-  const brName = branch?.name  || 'LuxeSalon';
+  const brName = branch?.name  || 'Zane Salon';
   const tier   = loyaltyTier(totalPoints);
   const meta   = {
     customer_name: name,
@@ -350,10 +350,10 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) 
     branch_id:     branch?.id,
   };
   const msg =
-    `${tier.emoji} *LuxeSalon — Loyalty Points Update*\n\n` +
+    `${tier.emoji} *Zane Salon — Loyalty Points Update*\n\n` +
     `Hey ${name}! 🎉\n\nYou just earned *+${pointsEarned} points* at *${brName}*!\n\n` +
     `📊 Your Points Balance:\n  • Earned this visit: +${pointsEarned}\n  • Total balance: *${totalPoints} pts*\n  • Tier status: ${tier.name}\n\n` +
-    `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting LuxeSalon to unlock more rewards. 🛍️`;
+    `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting Zane Salon to unlock more rewards. 🛍️`;
 
   await sendWhatsApp({ to: phone, message: msg, meta });
 }
@@ -366,7 +366,7 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
 
   const customerName = customer?.name || payment.customer_name || 'Valued Customer';
   const svcName      = service?.name  || 'your recent service';
-  const brName       = branch?.name   || 'LuxeSalon';
+  const brName       = branch?.name   || 'Zane Salon';
   const brPhone      = branch?.phone  || '';
   const base         = process.env.FRONTEND_URL || 'http://localhost';
   const reviewUrl    = `${base}/review/${token}`;
@@ -402,7 +402,7 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
 
   if (phone) {
     const msg =
-      `⭐ *LuxeSalon — Share Your Feedback!*\n\n` +
+      `⭐ *Zane Salon — Share Your Feedback!*\n\n` +
       `Hi ${customerName}! 😊 Thank you for visiting *${brName}*.\n\n` +
       `How was your *${svcName}* experience? We'd love your feedback!\n\n` +
       `👉 Leave a review (takes 30 seconds):\n${reviewUrl}\n\n` +

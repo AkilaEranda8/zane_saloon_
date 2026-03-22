@@ -108,15 +108,15 @@ const sendTest = async (req, res) => {
       if (email) {
         await sendEmail({
           to:      email,
-          subject: '[TEST] Appointment Confirmed — LuxeSalon',
-          html:    `<p>This is a test appointment confirmation from LuxeSalon (${date}).</p>`,
+          subject: '[TEST] Appointment Confirmed — Zane Salon',
+          html:    `<p>This is a test appointment confirmation from Zane Salon (${date}).</p>`,
           meta,
         });
       }
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] ✂️ LuxeSalon — Appointment Confirmed!\n\nHi Test Customer, this is a test notification (${date}).`,
+          message: `[TEST] ✂️ Zane Salon — Appointment Confirmed!\n\nHi Test Customer, this is a test notification (${date}).`,
           meta,
         });
       }
@@ -124,15 +124,15 @@ const sendTest = async (req, res) => {
       if (email) {
         await sendEmail({
           to:      email,
-          subject: '[TEST] Payment Receipt — LuxeSalon',
-          html:    `<p>This is a test payment receipt from LuxeSalon (${date}). Amount: Rs. 1,500.00</p>`,
+          subject: '[TEST] Payment Receipt — Zane Salon',
+          html:    `<p>This is a test payment receipt from Zane Salon (${date}). Amount: Rs. 1,500.00</p>`,
           meta,
         });
       }
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] 🧾 LuxeSalon — Payment Receipt\n\nHi Test Customer! This is a test receipt (${date}).\n💰 Total Paid: Rs. 1,500.00`,
+          message: `[TEST] 🧾 Zane Salon — Payment Receipt\n\nHi Test Customer! This is a test receipt (${date}).\n💰 Total Paid: Rs. 1,500.00`,
           meta,
         });
       }
@@ -140,7 +140,7 @@ const sendTest = async (req, res) => {
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] 🌟 LuxeSalon — Loyalty Points\n\nHey Test Customer! 🎉\nThis is a test loyalty update.\n• Earned this visit: +150 pts\n• Total balance: 350 pts`,
+          message: `[TEST] 🌟 Zane Salon — Loyalty Points\n\nHey Test Customer! 🎉\nThis is a test loyalty update.\n• Earned this visit: +150 pts\n• Total balance: 350 pts`,
           meta,
         });
       }

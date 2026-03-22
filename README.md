@@ -1,4 +1,4 @@
-# LuxeSalon — Salon Management System
+# Zane Salon — Salon Management System
 
 A full-stack salon management application built with **Node.js / Express / MySQL** on the backend and **React / Vite** on the frontend.
 
@@ -76,7 +76,7 @@ You can override defaults by creating a `.env` file at the project root:
 
 ```env
 DB_PASS=your_mysql_root_password
-DB_NAME=luxesalon
+DB_NAME=zanesalon
 JWT_SECRET=your_strong_secret_here
 ```
 
@@ -100,7 +100,7 @@ npm run install:all
 ### 2. Create the MySQL database
 
 ```sql
-CREATE DATABASE luxesalon CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE zanesalon CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ### 3. Configure environment variables
@@ -111,7 +111,7 @@ Create `backend/.env`:
 DB_HOST=localhost
 DB_USER=root
 DB_PASS=
-DB_NAME=luxesalon
+DB_NAME=zanesalon
 JWT_SECRET=your_secret_key_change_this
 PORT=5000
 ```

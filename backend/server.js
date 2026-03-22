@@ -47,7 +47,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', message: 'LuxeSalon API is running' })
+  res.json({ status: 'ok', message: 'Zane Salon API is running' })
 );
 
 // Public (no auth)
@@ -112,7 +112,7 @@ connectWithRetry().then(async () => {
     console.warn('⚠  Table sync warning:', err.message);
   }
   server.listen(PORT, () =>
-    console.log(`✓ LuxeSalon server running on http://localhost:${PORT}`)
+    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
   );
 });
 

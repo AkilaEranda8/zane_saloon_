@@ -394,7 +394,7 @@ export default function BookingPage() {
       <div style={S.container}>
         {/* Header */}
         <div style={S.header}>
-          <h1 style={S.logo}>LuxeSalon</h1>
+          <h1 style={S.logo}>Zane Salon</h1>
           <p style={S.subtitle}>Book your appointment online</p>
         </div>
 

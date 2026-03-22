@@ -65,7 +65,7 @@ export default function LoginPage() {
             fontFamily: "'Cormorant Garamond', serif",
             fontSize: 36, fontWeight: 700, color: colors.dark,
             margin: 0, letterSpacing: 1,
-          }}>LuxeSalon</h1>
+          }}>Zane Salon</h1>
           <p style={{ color: colors.muted, margin: '6px 0 0', fontSize: 14 }}>Salon Management System</p>
         </div>
 

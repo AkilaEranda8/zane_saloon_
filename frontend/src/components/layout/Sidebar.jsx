@@ -285,7 +285,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           {!ec && (
             <div style={{ overflow:'hidden' }}>
               <div style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:"'Outfit','Inter',sans-serif", letterSpacing:'-0.02em', lineHeight:1.2, whiteSpace:'nowrap' }}>
-                LuxeSalon
+                Zane Salon
               </div>
               <div style={{ fontSize:9.5, color:C.textMuted, fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase' }}>
                 Management

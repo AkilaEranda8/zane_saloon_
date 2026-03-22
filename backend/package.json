@@ -1,7 +1,7 @@
 {
-  "name": "luxesalon-backend",
+  "name": "zanesalon-backend",
   "version": "1.0.0",
-  "description": "LuxeSalon Backend API",
+  "description": "Zane Salon Backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

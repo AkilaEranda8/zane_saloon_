@@ -116,7 +116,7 @@ export default function Topbar({ onMenuClick }) {
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef(null);
 
-  const pageName = PAGE_LABELS[location.pathname] ?? 'LuxeSalon';
+  const pageName = PAGE_LABELS[location.pathname] ?? 'Zane Salon';
 
   // Fetch unread reminder count
   useEffect(() => {
@@ -190,7 +190,7 @@ export default function Topbar({ onMenuClick }) {
           </button>
 
           <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-            <span style={{ fontSize:14, color:'#667085', fontWeight:500, whiteSpace:'nowrap' }}>LuxeSalon</span>
+            <span style={{ fontSize:14, color:'#667085', fontWeight:500, whiteSpace:'nowrap' }}>Zane Salon</span>
             <span style={{ color:'#D0D5DD', fontSize:14, fontWeight:400 }}>/</span>
             <span style={{
               fontSize:     14,
