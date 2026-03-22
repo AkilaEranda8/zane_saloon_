@@ -1,0 +1,119 @@
+require('dotenv').config();
+const express      = require('express');
+const http         = require('http');
+const cors         = require('cors');
+const cookieParser = require('cookie-parser');
+const path         = require('path');
+const { sequelize } = require('./config/database');
+const validateEnv  = require('./config/validateEnv');
+const { initSocket } = require('./socket');
+
+// Validate required env vars on startup
+validateEnv();
+
+// Import models so associations are registered
+require('./models');
+
+const app = express();
+const server = http.createServer(app);
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost',        // Docker nginx (port 80)
+  'http://localhost:80',
+  'http://main.zanesalon.com',
+  'https://main.zanesalon.com',
+  'http://api.zanesalon.com',
+  'https://api.zanesalon.com',
+];
+const corsOptions = {
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
+
+// ── Socket.io ─────────────────────────────────────────────────────────────────
+initSocket(server, { origin: allowedOrigins, credentials: true });
+app.use(express.json());
+app.use(cookieParser());
+
+// Static uploads folder
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) =>
+  res.json({ status: 'ok', message: 'LuxeSalon API is running' })
+);
+
+// Public (no auth)
+app.use('/api/public',       require('./routes/public'));
+
+// Auth
+app.use('/api/auth',         require('./routes/auth'));
+
+// Protected resources
+app.use('/api/branches',     require('./routes/branches'));
+app.use('/api/services',     require('./routes/services'));
+app.use('/api/staff',        require('./routes/staff'));
+app.use('/api/appointments', require('./routes/appointments'));
+app.use('/api/customers',    require('./routes/customers'));
+app.use('/api/payments',     require('./routes/payments'));
+app.use('/api/inventory',    require('./routes/inventory'));
+app.use('/api/attendance',   require('./routes/attendance'));
+app.use('/api/reminders',    require('./routes/reminders'));
+app.use('/api/reports',      require('./routes/reports'));
+app.use('/api/users',        require('./routes/users'));
+app.use('/api/walkin',       require('./routes/walkin'));
+app.use('/api/expenses',     require('./routes/expenses'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/reviews',      require('./routes/reviews'));
+app.use('/api/packages',     require('./routes/packages'));
+
+// ── 404 handler ───────────────────────────────────────────────────────────────
+app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
+
+// ── Global error handler ──────────────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(err.status || 500).json({
+    message: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message || 'Internal server error',
+  });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+
+async function connectWithRetry(retries = 10, delay = 3000) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      await sequelize.authenticate();
+      console.log('✓ Database connection established.');
+      return;
+    } catch (err) {
+      console.error(`✗ DB connection attempt ${i}/${retries} failed: ${err.message}`);
+      if (i < retries) await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  console.error('✗ Could not connect to database after all retries.');
+}
+
+connectWithRetry().then(async () => {
+  // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
+  try {
+    await sequelize.sync({ force: false });
+  } catch (err) {
+    console.warn('⚠  Table sync warning:', err.message);
+  }
+  server.listen(PORT, () =>
+    console.log(`✓ LuxeSalon server running on http://localhost:${PORT}`)
+  );
+});
+
+module.exports = app;

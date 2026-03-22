@@ -1,0 +1,526 @@
+﻿import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth }    from '../context/AuthContext';
+import api            from '../api/axios';
+import { useToast }   from '../components/ui/Toast';
+import { Select }     from '../components/ui/FormElements';
+
+/* ── design tokens ──────────────────────────────────── */
+const ACCENT  = '#6D28D9';        // purple – today / active
+const MONTHS_LONG  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+const HOURS  = Array.from({ length: 15 }, (_, i) => i + 7);  // 7 am → 9 pm
+const HOUR_H = 72;  // px per hour
+
+const STATUS_COLOR = {
+  pending:   { bg:'#FEF9EC', text:'#92400E',  dot:'#F59E0B', accent:'#F59E0B' },
+  confirmed: { bg:'#EFF6FF', text:'#1E40AF',  dot:'#3B82F6', accent:'#3B82F6' },
+  completed: { bg:'#F0FDF4', text:'#065F46',  dot:'#10B981', accent:'#10B981' },
+  cancelled: { bg:'#FFF1F2', text:'#991B1B',  dot:'#EF4444', accent:'#EF4444' },
+};
+
+const CARD_PAL = [
+  { accent:'#FB923C', bg:'#FFFBF7', text:'#7C2D12' },
+  { accent:'#8B5CF6', bg:'#F9F7FF', text:'#3B1FA8' },
+  { accent:'#3B82F6', bg:'#F5F9FF', text:'#1E3A8A' },
+  { accent:'#10B981', bg:'#F2FDF8', text:'#064E3B' },
+  { accent:'#EC4899', bg:'#FFF5FA', text:'#831843' },
+  { accent:'#F59E0B', bg:'#FEFCE8', text:'#78350F' },
+];
+
+/* ── helpers ────────────────────────────────────────── */
+function pad(n)       { return String(n).padStart(2, '0'); }
+function dateKey(d)   { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function sameDay(a,b) { return a.toDateString() === b.toDateString(); }
+
+function getWeekDates(anchor) {
+  const d = new Date(anchor);
+  d.setDate(d.getDate() - d.getDay());
+  return Array.from({ length: 7 }, (_, i) => { const n = new Date(d); n.setDate(d.getDate()+i); return n; });
+}
+
+function buildMonthGrid(y, m) {
+  const first = new Date(y, m, 1).getDay();
+  const days  = new Date(y, m+1, 0).getDate();
+  return [...Array(first).fill(null), ...Array.from({ length: days }, (_, i) => i+1)];
+}
+
+function fmtHour(h) {
+  if (h === 0)  return '12:00 am';
+  if (h === 12) return '12:00 pm';
+  return h < 12 ? `${pad(h)}:00 am` : `${pad(h-12)}:00 pm`;
+}
+
+function fmtTime12(t) {
+  if (!t) return '';
+  const [hh, mm] = t.split(':').map(Number);
+  const ampm = hh < 12 ? 'am' : 'pm';
+  const h    = hh === 0 ? 12 : hh > 12 ? hh-12 : hh;
+  return `${pad(h)}:${pad(mm||0)} ${ampm}`;
+}
+
+function timeToMin(t) {
+  if (!t) return 9*60;
+  const [h, m] = t.split(':').map(Number);
+  return h*60 + (m||0);
+}
+
+function timeTopPx(t) {
+  return Math.max(0, (timeToMin(t) - HOURS[0]*60) / 60 * HOUR_H);
+}
+
+function endTime(t, dur) {
+  const m = timeToMin(t) + (dur || 60);
+  return `${pad(Math.floor(m/60))}:${pad(m%60)}`;
+}
+
+function custName(a)  {
+  return a.customer_name ||
+    (a.customer ? `${a.customer.first_name||''} ${a.customer.last_name||''}`.trim() : '') ||
+    '';
+}
+function staffName(a) {
+  return (a.staff ? `${a.staff.first_name||''} ${a.staff.last_name||''}`.trim() : '') || a.staff?.name || '';
+}
+function apptTime(a)  { return a.time || a.appointment_time || ''; }
+function apptDur(a)   { return a.service?.duration_minutes || a.duration || 60; }
+
+/* ── EventCard ──────────────────────────────────────── */
+function EventCard({ appt, colorIdx, heightPx, navigate }) {
+  const [tab, setTab]  = useState('desc');
+  const col   = CARD_PAL[colorIdx % CARD_PAL.length];
+  const cName = custName(appt);
+  const sName = staffName(appt);
+  const t     = apptTime(appt);
+  const dur   = apptDur(appt);
+  const endT  = endTime(t, dur);
+  const showTabs   = heightPx >= 96;
+  const showDetail = heightPx >= 112;
+  const showFoot   = heightPx >= 162;
+
+  return (
+    <div
+      onClick={() => navigate(`/appointments/${appt.id}`)}
+      style={{
+        background: col.bg,
+        borderLeft: `3px solid ${col.accent}`,
+        borderRadius: '0 8px 8px 0',
+        padding: '6px 9px',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        boxSizing: 'border-box',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        transition: 'box-shadow .15s',
+      }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow='0 3px 10px rgba(0,0,0,0.1)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)'}
+    >
+      {/* colored dot + title row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {appt.service?.name || 'Appointment'}
+        </span>
+      </div>
+      <div style={{ fontSize: 10.5, color: '#6B7280', paddingLeft: 11 }}>
+        {fmtTime12(t)} – {fmtTime12(endT)}
+      </div>
+
+      {showTabs && (
+        <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 3, marginBottom: 1, paddingLeft: 11 }}>
+          {['Desc', 'People'].map(tb => (
+            <button
+              key={tb}
+              onClick={e => { e.stopPropagation(); setTab(tb.toLowerCase()); }}
+              style={{
+                background: tab === tb.toLowerCase() ? col.accent+'18' : 'none',
+                border: 'none', cursor: 'pointer',
+                fontSize: 10, fontWeight: 700,
+                color: tab === tb.toLowerCase() ? col.accent : '#9CA3AF',
+                padding: '2px 7px', borderRadius: 6,
+              }}
+            >{tb}</button>
+          ))}
+        </div>
+      )}
+
+      {showDetail && tab === 'desc' && (
+        <div style={{ fontSize: 11, color: '#4B5563', lineHeight: 1.5, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', paddingLeft: 11 }}>
+          {appt.notes || `${appt.service?.name || 'Service'} appointment${sName ? ` with ${sName}` : ''}.`}
+        </div>
+      )}
+
+      {showDetail && tab === 'people' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, overflow: 'hidden', paddingLeft: 4 }}>
+          {cName && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: col.accent+'20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: col.accent }}>
+                {cName[0]?.toUpperCase() || '?'}
+              </div>
+              <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{cName}</span>
+              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: appt.status==='cancelled'?'#FEE2E2':'#DCFCE7', color: appt.status==='cancelled'?'#B91C1C':'#15803D', fontWeight: 700, flexShrink: 0 }}>
+                {appt.status === 'cancelled' ? 'Rejected' : 'Accepted'}
+              </span>
+            </div>
+          )}
+          {sName && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#0369A1' }}>
+                {sName[0]?.toUpperCase() || '?'}
+              </div>
+              <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{sName}</span>
+              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, flexShrink: 0 }}>Staff</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showFoot && (
+        <div style={{ marginTop: 'auto', paddingLeft: 11 }}>
+          {appt.branch?.name && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9CA3AF', marginBottom: 5 }}>
+              <span style={{ fontSize: 11 }}>📍</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6B7280' }}>{appt.branch.name}</span>
+            </div>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); navigate(`/appointments/${appt.id}`); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: col.accent+'15', border: `1px solid ${col.accent}30`, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: col.accent }}
+          >🗓 View</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── MonthView ──────────────────────────────────────── */
+function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setViewMode }) {
+  const cells    = buildMonthGrid(year, month);
+  const todayKey = dateKey(todayDate);
+  const DOW_H    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      {/* DOW header */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#FAFAFA', borderBottom: '1px solid #E5E7EB' }}>
+        {DOW_H.map((d, i) => (
+          <div key={d} style={{ textAlign: 'center', padding: '10px 0', fontSize: 11, fontWeight: 700, color: i===0||i===6 ? '#EF4444' : '#9CA3AF', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{d}</div>
+        ))}
+      </div>
+      {/* Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e${i}`} style={{ minHeight: 100, borderRight: '1px solid #F3F4F6', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA' }} />;
+          const d     = new Date(year, month, day);
+          const k     = dateKey(d);
+          const dow   = d.getDay();
+          const appts = calData[k] || [];
+          const isTod = k === todayKey;
+          const isSel = sameDay(d, anchor);
+          const isWkd = dow === 0 || dow === 6;
+          return (
+            <div
+              key={day}
+              onClick={() => { setAnchor(d); setViewMode('day'); }}
+              style={{
+                minHeight: 100, padding: '8px 8px 6px', boxSizing: 'border-box',
+                borderRight: '1px solid #F3F4F6', borderBottom: '1px solid #F3F4F6',
+                cursor: 'pointer',
+                background: isSel ? '#F5F3FF' : isTod ? '#FDFCFF' : isWkd ? '#FAFAFA' : '#fff',
+                transition: 'background .12s',
+              }}
+              onMouseEnter={e => { if (!isSel && !isTod) e.currentTarget.style.background = '#F5F5F5'; }}
+              onMouseLeave={e => e.currentTarget.style.background = isSel ? '#F5F3FF' : isTod ? '#FDFCFF' : isWkd ? '#FAFAFA' : '#fff'}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+                background: isTod ? ACCENT : 'transparent',
+                fontSize: 13, fontWeight: isTod || isSel ? 700 : 400,
+                color: isTod ? '#fff' : isSel ? ACCENT : isWkd ? '#EF4444' : '#111827',
+              }}>{day}</div>
+              {appts.slice(0, 3).map((a, ai) => {
+                const cpx = CARD_PAL[ai % CARD_PAL.length];
+                return (
+                  <div key={a.id||ai} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '2px 6px', borderRadius: 4, background: cpx.bg, borderLeft: `2.5px solid ${cpx.accent}`, marginBottom: 2, overflow: 'hidden' }}>
+                    <span style={{ color: '#6B7280', flexShrink: 0 }}>{apptTime(a).slice(0,5)}</span>
+                    <span style={{ color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.service?.name || 'Appt'}</span>
+                  </div>
+                );
+              })}
+              {appts.length > 3 && (
+                <div style={{ fontSize: 10, color: ACCENT, fontWeight: 700, padding: '1px 6px' }}>+{appts.length-3} more</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── CalendarPage ───────────────────────────────────── */
+export default function CalendarPage() {
+  const { user }  = useAuth();
+  const navigate  = useNavigate();
+  const { toast } = useToast();
+  const isAdmin   = ['superadmin','admin'].includes(user?.role);
+  const todayDate = new Date();
+
+  const [viewMode, setViewMode] = useState('week');
+  const [anchor,   setAnchor]   = useState(new Date());
+  const [calData,  setCalData]  = useState({});
+  const [loading,  setLoading]  = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState('');
+  const [nowMin,   setNowMin]   = useState(() => { const n=new Date(); return n.getHours()*60+n.getMinutes(); });
+
+  useEffect(() => {
+    const t = setInterval(() => { const n=new Date(); setNowMin(n.getHours()*60+n.getMinutes()); }, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) api.get('/branches').then(r => setBranches(r.data || [])).catch(() => {});
+  }, [isAdmin]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const months = new Set();
+      months.add(`${anchor.getFullYear()}-${anchor.getMonth()+1}`);
+      if (viewMode === 'week') {
+        getWeekDates(anchor).forEach(d => months.add(`${d.getFullYear()}-${d.getMonth()+1}`));
+      }
+      const results = await Promise.all([...months].map(ym => {
+        const [y, m] = ym.split('-');
+        const p = new URLSearchParams({ year: y, month: m });
+        if (branchId) p.set('branchId', branchId);
+        return api.get(`/appointments/calendar?${p}`).then(r => r.data || {});
+      }));
+      const merged = {};
+      results.forEach(d => Object.assign(merged, d));
+      setCalData(merged);
+    } catch {
+      toast('Failed to load calendar.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [anchor, viewMode, branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const goBack = () => {
+    const d = new Date(anchor);
+    if (viewMode==='day')   d.setDate(d.getDate()-1);
+    else if (viewMode==='week')  d.setDate(d.getDate()-7);
+    else d.setMonth(d.getMonth()-1);
+    setAnchor(d);
+  };
+  const goNext = () => {
+    const d = new Date(anchor);
+    if (viewMode==='day')   d.setDate(d.getDate()+1);
+    else if (viewMode==='week')  d.setDate(d.getDate()+7);
+    else d.setMonth(d.getMonth()+1);
+    setAnchor(d);
+  };
+
+  const weekDates  = getWeekDates(anchor);
+  const displayDays = viewMode === 'day' ? [anchor] : weekDates;
+  const nowTopPx   = Math.max(0, (nowMin - HOURS[0]*60) / 60 * HOUR_H);
+
+  /* header label */
+  const headerLabel = viewMode === 'day'
+    ? anchor.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' }).replace(',', '')
+    : viewMode === 'week'
+      ? (() => {
+          const s = weekDates[0], e = weekDates[6];
+          if (s.getMonth() === e.getMonth())
+            return `${s.getDate()} – ${e.getDate()} ${MONTHS_SHORT[s.getMonth()]} ${String(s.getFullYear()).slice(2)}`;
+          return `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} – ${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${String(e.getFullYear()).slice(2)}`;
+        })()
+      : `${MONTHS_SHORT[anchor.getMonth()]} ${anchor.getFullYear()}`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 108px)', fontFamily: "'Inter',sans-serif", userSelect: 'none' }}>
+
+      {/* ── Top bar ────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0 16px', gap: 12, flexWrap: 'wrap', flexShrink: 0 }}>
+
+        {/* Left: Today + nav + date label */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setAnchor(new Date())}
+            style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}
+          >Today</button>
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button onClick={goBack} style={{ width: 30, height: 30, borderRadius: '8px 0 0 8px', border: '1.5px solid #E5E7EB', borderRight: 'none', background: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>‹</button>
+            <button onClick={goNext} style={{ width: 30, height: 30, borderRadius: '0 8px 8px 0', border: '1.5px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>›</button>
+          </div>
+          <span style={{ fontSize: 17, fontWeight: 800, color: '#111827', letterSpacing: '-0.3px' }}>{headerLabel}</span>
+        </div>
+
+        {/* Center: View tabs */}
+        <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3, gap: 2 }}>
+          {['Day','Week','Month'].map(v => (
+            <button
+              key={v}
+              onClick={() => setViewMode(v.toLowerCase())}
+              style={{
+                padding: '5px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontSize: 13, fontWeight: viewMode === v.toLowerCase() ? 700 : 500,
+                background: viewMode === v.toLowerCase() ? '#fff' : 'transparent',
+                color: viewMode === v.toLowerCase() ? '#111827' : '#64748B',
+                boxShadow: viewMode === v.toLowerCase() ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all .15s',
+              }}
+            >{v}</button>
+          ))}
+        </div>
+
+        {/* Right: Branch filter + Add */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isAdmin && branches.length > 0 && (
+            <Select value={branchId} onChange={e => setBranchId(e.target.value)} style={{ width: 145, borderRadius: 10 }}>
+              <option value="">All Branches</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          )}
+        </div>
+      </div>
+
+      {/* ── Month view ─────────────────────────────── */}
+      {viewMode === 'month' && (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <MonthView
+            year={anchor.getFullYear()} month={anchor.getMonth()}
+            calData={calData} todayDate={todayDate}
+            anchor={anchor} setAnchor={setAnchor} setViewMode={setViewMode}
+          />
+        </div>
+      )}
+
+      {/* ── Week / Day view ────────────────────────── */}
+      {viewMode !== 'month' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+
+          {/* Sticky day headers */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', flexShrink: 0, background: '#fff', zIndex: 10 }}>
+            <div style={{ width: 72, flexShrink: 0, borderRight: '1px solid #E5E7EB', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', paddingRight: 8, paddingBottom: 10 }}>
+              {loading && <span style={{ fontSize: 10, color: '#9CA3AF' }}>…</span>}
+            </div>
+            {displayDays.map((d, di) => {
+              const isTod = sameDay(d, todayDate);
+              const dow   = d.getDay();
+              const isWkd = dow === 0 || dow === 6;
+              return (
+                <div
+                  key={dateKey(d)}
+                  onClick={() => { setAnchor(d); if (viewMode==='week') setViewMode('day'); }}
+                  style={{
+                    flex: 1, textAlign: 'center', padding: '12px 4px 10px',
+                    borderRight: di < displayDays.length-1 ? '1px solid #F1F5F9' : 'none',
+                    cursor: viewMode==='week' ? 'pointer' : 'default',
+                    borderBottom: isTod ? `3px solid ${ACCENT}` : '3px solid transparent',
+                    background: isTod ? `${ACCENT}06` : 'transparent',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={e => { if (!isTod) e.currentTarget.style.background='#F8F9FB'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isTod ? `${ACCENT}06` : 'transparent'; }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: isTod ? ACCENT : isWkd ? '#EF4444' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5 }}>
+                    {DOW[d.getDay()]}
+                  </div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 34, height: 34, borderRadius: '50%',
+                    background: isTod ? ACCENT : 'transparent',
+                    fontSize: 15, fontWeight: isTod ? 800 : 500,
+                    color: isTod ? '#fff' : isWkd ? '#EF4444' : '#1F2937',
+                    boxShadow: isTod ? `0 2px 8px ${ACCENT}50` : 'none',
+                  }}>{d.getDate()}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Scrollable time grid */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '60px 0', color: '#9CA3AF', fontSize: 13 }}>Loading…</div>
+            )}
+            {!loading && (
+              <div style={{ display: 'flex', minHeight: HOURS.length * HOUR_H }}>
+
+                {/* Time labels */}
+                <div style={{ width: 72, flexShrink: 0, borderRight: '1px solid #E5E7EB', position: 'relative' }}>
+                  {HOURS.map(h => (
+                    <div key={h} style={{ height: HOUR_H, position: 'relative', boxSizing: 'border-box' }}>
+                      <span style={{ position: 'absolute', top: -8, right: 10, fontSize: 10.5, color: '#94A3B8', whiteSpace: 'nowrap', fontWeight: 500 }}>{fmtHour(h)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Day columns */}
+                {displayDays.map((d, di) => {
+                  const key   = dateKey(d);
+                  const appts = calData[key] || [];
+                  const isTod = sameDay(d, todayDate);
+
+                  return (
+                    <div
+                      key={key}
+                      style={{ flex: 1, position: 'relative', borderRight: di < displayDays.length-1 ? '1px solid #F1F5F9' : 'none', background: isTod ? `${ACCENT}04` : 'transparent' }}
+                    >
+                      {/* Hour grid lines */}
+                      {HOURS.map(h => (
+                        <div key={h} style={{ height: HOUR_H, boxSizing: 'border-box', borderBottom: '1px solid #F1F5F9', position: 'relative' }}>
+                          {/* half-hour tick */}
+                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderBottom: '1px dashed #F8FAFC' }} />
+                        </div>
+                      ))}
+
+                      {/* Now indicator */}
+                      {isTod && nowTopPx > 0 && nowTopPx < HOURS.length * HOUR_H && (
+                        <div style={{ position: 'absolute', top: nowTopPx, left: 0, right: 0, zIndex: 5, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                          <div style={{ width: 10, height: 10, minWidth: 10, borderRadius: '50%', background: '#EF4444', marginLeft: -5, boxShadow: '0 0 0 2px #fff' }} />
+                          <div style={{ flex: 1, height: 2, background: '#EF4444', opacity: 0.75 }} />
+                        </div>
+                      )}
+
+                      {/* Appointment cards */}
+                      {appts.map((a, ai) => {
+                        const t   = apptTime(a);
+                        const dur = apptDur(a);
+                        const top = timeTopPx(t);
+                        const h   = Math.max(dur / 60 * HOUR_H - 4, 46);
+                        return (
+                          <div key={a.id || ai} style={{ position: 'absolute', top: top + 2, left: 4, right: 4, height: h, zIndex: 2 }}>
+                            <EventCard
+                              appt={a}
+                              colorIdx={(di * 7 + ai) % CARD_PAL.length}
+                              heightPx={h}
+                              navigate={navigate}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+    </div>
+  );
+}

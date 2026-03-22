@@ -1,0 +1,183 @@
+const { Op } = require('sequelize');
+const { WalkIn, Service, Staff } = require('../models');
+const { emitQueueUpdate } = require('../socket');
+
+// Helper: today as YYYY-MM-DD
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Helper: generate next token for a branch+date
+async function generateToken(branchId, date) {
+  const count = await WalkIn.count({
+    where: { branch_id: branchId, check_in_date: date },
+  });
+  const num = count + 1;
+  return 'T' + String(num).padStart(3, '0');
+}
+
+// Include options reused across queries
+const defaultInclude = [
+  { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
+  { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+];
+
+// ── GET /api/walkin ───────────────────────────────────────────────────────────
+exports.list = async (req, res) => {
+  try {
+    const { branchId, date, status } = req.query;
+    const where = {
+      branch_id: branchId,
+      check_in_date: date || today(),
+    };
+    if (status) where.status = status;
+
+    const queue = await WalkIn.findAll({
+      where,
+      include: defaultInclude,
+      order: [['createdAt', 'ASC']],
+    });
+
+    res.json(queue);
+  } catch (err) {
+    console.error('walkin.list error:', err);
+    res.status(500).json({ message: 'Failed to fetch walk-in queue.' });
+  }
+};
+
+// ── GET /api/walkin/stats ─────────────────────────────────────────────────────
+exports.stats = async (req, res) => {
+  try {
+    const { branchId, date } = req.query;
+    const where = {
+      branch_id: branchId,
+      check_in_date: date || today(),
+    };
+
+    const all = await WalkIn.findAll({ where, attributes: ['status'] });
+
+    const counts = { waiting: 0, serving: 0, completed: 0, cancelled: 0, total: all.length };
+    all.forEach((r) => { counts[r.status]++; });
+
+    res.json(counts);
+  } catch (err) {
+    console.error('walkin.stats error:', err);
+    res.status(500).json({ message: 'Failed to fetch walk-in stats.' });
+  }
+};
+
+// ── POST /api/walkin/checkin ──────────────────────────────────────────────────
+exports.checkin = async (req, res) => {
+  try {
+    const { customerName, phone, branchId, serviceId, note } = req.body;
+
+    if (!customerName || !branchId || !serviceId) {
+      return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
+    }
+
+    const dateStr = today();
+    const token = await generateToken(branchId, dateStr);
+
+    // Calculate estimated wait
+    const service = await Service.findByPk(serviceId);
+    if (!service) return res.status(404).json({ message: 'Service not found.' });
+
+    const waitingCount = await WalkIn.count({
+      where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
+    });
+    const estimatedWait = waitingCount * (service.duration_minutes || 30);
+
+    const entry = await WalkIn.create({
+      token,
+      customer_name: customerName,
+      phone: phone || null,
+      branch_id: branchId,
+      service_id: serviceId,
+      staff_id: null,
+      status: 'waiting',
+      check_in_time: new Date().toTimeString().slice(0, 8),
+      check_in_date: dateStr,
+      estimated_wait: estimatedWait,
+      note: note || null,
+    });
+
+    const full = await WalkIn.findByPk(entry.id, { include: defaultInclude });
+
+    emitQueueUpdate(branchId, { action: 'checkin', entry: full });
+    res.status(201).json(full);
+  } catch (err) {
+    console.error('walkin.checkin error:', err);
+    res.status(500).json({ message: 'Failed to check in walk-in customer.' });
+  }
+};
+
+// ── PATCH /api/walkin/:id/status ──────────────────────────────────────────────
+exports.updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const valid = ['serving', 'completed', 'cancelled'];
+    if (!valid.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${valid.join(', ')}` });
+    }
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+
+    entry.status = status;
+    if (status === 'serving') {
+      entry.check_in_time = new Date().toTimeString().slice(0, 8);
+    }
+    await entry.save();
+
+    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    emitQueueUpdate(entry.branch_id, { action: 'statusChange', entry: full });
+    res.json(full);
+  } catch (err) {
+    console.error('walkin.updateStatus error:', err);
+    res.status(500).json({ message: 'Failed to update walk-in status.' });
+  }
+};
+
+// ── PATCH /api/walkin/:id/assign ──────────────────────────────────────────────
+exports.assign = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { staffId } = req.body;
+
+    if (!staffId) return res.status(400).json({ message: 'staffId is required.' });
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+
+    entry.staff_id = staffId;
+    entry.status = 'serving';
+    entry.check_in_time = new Date().toTimeString().slice(0, 8);
+    await entry.save();
+
+    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    emitQueueUpdate(entry.branch_id, { action: 'assign', entry: full });
+    res.json(full);
+  } catch (err) {
+    console.error('walkin.assign error:', err);
+    res.status(500).json({ message: 'Failed to assign staff.' });
+  }
+};
+
+// ── DELETE /api/walkin/:id ────────────────────────────────────────────────────
+exports.remove = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+
+    const branchId = entry.branch_id;
+    await entry.destroy();
+
+    emitQueueUpdate(branchId, { action: 'remove', id: Number(id) });
+    res.json({ message: 'Walk-in entry removed.' });
+  } catch (err) {
+    console.error('walkin.remove error:', err);
+    res.status(500).json({ message: 'Failed to remove walk-in entry.' });
+  }
+};
