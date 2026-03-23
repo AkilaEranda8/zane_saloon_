@@ -218,6 +218,7 @@ export default function AppointmentsPage() {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
+  const [paymentServices, setPaymentServices] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -241,21 +242,27 @@ export default function AppointmentsPage() {
 
   const openPayment = (row) => {
     setPaymentAppt(row);
+    const svcId = row.service_id || row.service?.id;
+    setPaymentServices(svcId ? [svcId] : []);
     setPaymentAmt(row.amount || '');
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
     setShowPayment(true);
   };
+  const togglePaymentService = (id) => {
+    setPaymentServices(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
   const handlePayment = async () => {
     if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');
+    if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
     try {
       await api.post('/payments', {
         branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
         staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
         customer_id: paymentAppt.customer_id || null,
-        service_id: paymentAppt.service_id || paymentAppt.service?.id || null,
+        service_id: paymentServices[0] || null,
         appointment_id: paymentAppt.id,
         customer_name: paymentAppt.customer_name,
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
@@ -460,7 +467,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="sm"
+      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md"
         footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
         {paymentAppt && (
           paymentOk ? (
@@ -474,25 +481,39 @@ export default function AppointmentsPage() {
             <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
               {paymentErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:'1px solid #FEE2E2' }}>{paymentErr}</div>}
               <div style={{ background:'#F9FAFB', borderRadius:12, padding:'14px 16px' }}>
-                <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
-                <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
-                <div style={{ display:'flex', gap:12, marginTop:10, flexWrap:'wrap' }}>
-                  <span style={{ background:'#EFF6FF', color:'#2563EB', padding:'3px 10px', borderRadius:6, fontSize:12, fontWeight:600 }}>{paymentAppt.service?.name||'Service'}</span>
-                  {paymentAppt.staff?.name && <span style={{ background:'#F3F4F6', color:'#475467', padding:'3px 10px', borderRadius:6, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div>
+                    <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
+                    <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
+                  </div>
+                  {paymentAppt.staff?.name && <span style={{ background:'#F3F4F6', color:'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
               </div>
-              <FormGroup label="Amount (Rs.)" required>
-                <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
-              </FormGroup>
-              <FormGroup label="Payment Method" required>
+              <FormGroup label="Services" required>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {['Cash','Card','Bank Transfer','Online'].map(m=>(
-                    <button key={m} onClick={()=>setPaymentMethod(m)} style={{ padding:'8px 16px', borderRadius:10, border:`1.5px solid ${paymentMethod===m?'#059669':'#E4E7EC'}`, background:paymentMethod===m?'#ECFDF5':'#fff', color:paymentMethod===m?'#059669':'#667085', fontWeight:paymentMethod===m?700:500, fontSize:13, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s' }}>
-                      {m}
-                    </button>
-                  ))}
+                  {services.map(s => {
+                    const active = paymentServices.includes(s.id);
+                    return (
+                      <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
+                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        {s.name}
+                        {s.price ? <span style={{ opacity:0.6, marginLeft:2 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                      </button>
+                    );
+                  })}
                 </div>
+                {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                <FormGroup label="Amount (Rs.)" required>
+                  <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
+                </FormGroup>
+                <FormGroup label="Payment Method" required>
+                  <Select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
+                    {['Cash','Card','Bank Transfer','Online'].map(m=><option key={m} value={m}>{m}</option>)}
+                  </Select>
+                </FormGroup>
+              </div>
               <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
                 <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Total</span>
                 <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
