@@ -28,7 +28,7 @@ const list = async (req, res) => {
       where,
       limit,
       offset,
-      order: [['date', 'DESC'], ['time', 'DESC']],
+      order: [['id', 'DESC']],
       include: [
         { model: Branch,   as: 'branch',   attributes: ['id', 'name', 'color'] },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] },

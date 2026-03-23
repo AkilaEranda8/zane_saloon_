@@ -214,7 +214,7 @@ export default function AppointmentsPage() {
   const [form, setForm]               = useState(EMPTY);
   const [saving, setSaving]           = useState(false);
   const [formErr, setFormErr]         = useState('');
-  const [sortKey, setSortKey]   = useState('date');
+  const [sortKey, setSortKey]   = useState('id');
   const [sortDir, setSortDir]   = useState('desc');
   const [deleteId, setDeleteId] = useState(null);
   // Customer search for form
