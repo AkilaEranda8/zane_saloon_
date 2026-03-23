@@ -302,7 +302,7 @@ export default function PaymentsPage() {
       />
 
       {/* Record Payment Modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment" size="md"
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment" size="lg"
         footer={
           <div style={{ display:'flex', gap:10, justifyContent:'flex-end', width:'100%' }}>
             <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
