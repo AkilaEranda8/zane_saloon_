@@ -118,7 +118,10 @@ export default function WalkInPage() {
 
   /*  Derived  */
   const busyStaffIds  = new Set(queue.filter((e) => e.status === 'serving' && e.staff_id).map((e) => e.staff_id));
-  const filteredQueue = filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus);
+  const STATUS_ORDER = { waiting: 0, serving: 1, completed: 2, cancelled: 3 };
+  const filteredQueue = (filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus))
+    .slice()
+    .sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
 
   /*  Actions  */
   const changeStatus = async (id, status) => {
