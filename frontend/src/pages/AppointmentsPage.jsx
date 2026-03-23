@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -24,7 +24,7 @@ const STATUS_META = {
   cancelled:  { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled'  },
   no_show:    { color:'#64748B', bg:'#F8FAFC', label:'No Show'    },
 };
-const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -212,6 +212,17 @@ export default function AppointmentsPage() {
   const [sortKey, setSortKey]   = useState('date');
   const [sortDir, setSortDir]   = useState('desc');
   const [deleteId, setDeleteId] = useState(null);
+  // Customer search for form
+  const [custSearch, setCustSearch]     = useState('');
+  const [custResults, setCustResults]   = useState([]);
+  const [custLoading, setCustLoading]   = useState(false);
+  const [showCustDrop, setShowCustDrop] = useState(false);
+  const [selectedCust, setSelectedCust] = useState(null);
+  const custRef = useRef(null);
+  // Package selection for form
+  const [custPackages, setCustPackages] = useState([]);
+  const [selectedPkg, setSelectedPkg]   = useState(null);
+
   const [showPayment, setShowPayment]     = useState(false);
   const [paymentAppt, setPaymentAppt]     = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
@@ -240,6 +251,45 @@ export default function AppointmentsPage() {
     setLoading(false);
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
+
+  // Customer search
+  useEffect(() => {
+    if (!custSearch || custSearch.length < 1) { setCustResults([]); return; }
+    const t = setTimeout(async () => {
+      setCustLoading(true);
+      try {
+        const r = await api.get('/customers', { params: { search: custSearch, limit: 10 } });
+        setCustResults(r.data?.data || r.data || []);
+      } catch { setCustResults([]); }
+      setCustLoading(false);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [custSearch]);
+
+  // Close customer dropdown on outside click
+  useEffect(() => {
+    const handler = e => { if (custRef.current && !custRef.current.contains(e.target)) setShowCustDrop(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Load active packages when customer is selected
+  useEffect(() => {
+    if (!selectedCust?.id) { setCustPackages([]); setSelectedPkg(null); return; }
+    api.get(`/packages/customer/${selectedCust.id}/active`)
+      .then(r => setCustPackages(r.data || []))
+      .catch(() => setCustPackages([]));
+  }, [selectedCust]);
+
+  const selectCust = (c) => {
+    setSelectedCust(c);
+    setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name, phone: c.phone || f.phone }));
+    setCustSearch(''); setShowCustDrop(false);
+  };
+  const clearCust = () => {
+    setSelectedCust(null); setSelectedPkg(null); setCustPackages([]);
+    setForm(f => ({ ...f, customer_id: '', customer_name: '', phone: '' }));
+  };
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = (row) => {
@@ -285,15 +335,32 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
     if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/appointments/${editItem.id}`, form) : await api.post('/appointments', form);
+      const res = editItem
+        ? await api.put(`/appointments/${editItem.id}`, form)
+        : await api.post('/appointments', form);
+      // Redeem package session if a package was selected (new appointments only)
+      if (!editItem && selectedPkg && form.service_id) {
+        try {
+          await api.post('/packages/redeem', {
+            customerPackageId: selectedPkg.id,
+            serviceId: Number(form.service_id),
+            appointmentId: res.data?.id || null,
+            staffId: form.staff_id || null,
+          });
+        } catch (pkgErr) {
+          // Non-fatal — appointment already created, just warn
+          setFormErr(`Appointment saved but package redeem failed: ${pkgErr.response?.data?.message || pkgErr.message}`);
+          setSaving(false); load(); return;
+        }
+      }
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -433,10 +500,79 @@ export default function AppointmentsPage() {
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {/* Customer Search */}
+          <FormGroup label="Customer" required>
+            {selectedCust ? (
+              <div style={{ display:'flex', alignItems:'center', gap:10, background:'#F0FDF4', border:'1.5px solid #86EFAC', borderRadius:10, padding:'9px 14px' }}>
+                <div style={{ width:36, height:36, borderRadius:8, background:'#16a34a', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:800, flexShrink:0 }}>
+                  {selectedCust.name?.charAt(0)?.toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#101828' }}>{selectedCust.name}</div>
+                  {selectedCust.phone && <div style={{ fontSize:11, color:'#667085' }}>{selectedCust.phone}</div>}
+                </div>
+                <button type="button" onClick={clearCust} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b', fontSize:18, lineHeight:1, padding:2 }}>×</button>
+              </div>
+            ) : (
+              <div style={{ position:'relative' }} ref={custRef}>
+                <input value={custSearch} onChange={e=>{setCustSearch(e.target.value); setForm(f=>({...f,customer_name:e.target.value,customer_id:''})); setShowCustDrop(true);}}
+                  onFocus={()=>setShowCustDrop(true)}
+                  placeholder="Type to search or enter name..."
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828' }}
+                  onFocusCap={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor='#D0D5DD'} />
+                {custLoading && <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'#98A2B3' }}>⏳</span>}
+                {showCustDrop && custResults.length>0 && (
+                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.12)', zIndex:200, maxHeight:180, overflowY:'auto' }}>
+                    {custResults.map(c=>(
+                      <div key={c.id} onMouseDown={()=>selectCust(c)} style={{ padding:'9px 14px', cursor:'pointer', borderBottom:'1px solid #F2F4F7', display:'flex', alignItems:'center', gap:10 }}
+                        onMouseEnter={e=>e.currentTarget.style.background='#F8FAFC'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
+                        <div style={{ width:28, height:28, borderRadius:6, background:'#2563EB', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{c.name?.charAt(0)?.toUpperCase()}</div>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
+                          {c.phone && <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Customer Name" required><Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" /></FormGroup>
+            <FormGroup label={selectedCust?'Customer Name':'Name (manual)'} required>
+              <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" />
+            </FormGroup>
             <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
           </div>
+          {/* Active Packages */}
+          {custPackages.length>0 && (
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
+                Active Packages <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>— click to use</span>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                {custPackages.map(cp=>{
+                  const isSel = selectedPkg?.id===cp.id;
+                  const pkgServices = cp.package?.services || [];
+                  const sessLeft = (cp.sessions_total||0)-(cp.sessions_used||0);
+                  return (
+                    <div key={cp.id} onClick={()=>{ setSelectedPkg(isSel?null:cp); if(!isSel&&pkgServices.length>0){ const sid=String(pkgServices[0]); const svc=services.find(x=>String(x.id)===sid); setForm(f=>({...f,service_id:sid,amount:0})); } }}
+                      style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, border:`1.5px solid ${isSel?'#7C3AED':'#E4E7EC'}`, background:isSel?'#F5F3FF':'#FAFAFA', cursor:'pointer', transition:'all 0.15s' }}>
+                      <div style={{ width:36, height:36, borderRadius:8, background:isSel?'#7C3AED':'#E4E7EC', color:isSel?'#fff':'#667085', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>PKG</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:isSel?'#5B21B6':'#101828' }}>{cp.package?.name||'Package'}</div>
+                        <div style={{ fontSize:11, color:'#667085', marginTop:1 }}>
+                          {sessLeft} session{sessLeft!==1?'s':''} left · expires {cp.expiry_date}
+                        </div>
+                      </div>
+                      {isSel && <span style={{ fontSize:13, color:'#7C3AED', fontWeight:700 }}>✓ Selected</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedPkg && <div style={{ fontSize:11, color:'#7C3AED', marginTop:5, fontWeight:600 }}>Package session will be redeemed on save</div>}
+            </div>
+          )}
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
