@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { path: '/services',     label: 'Services',     icon: '💆', roles: ['superadmin','admin','manager','staff'] },
   { path: '/staff',        label: 'Staff',        icon: '👤', roles: ['superadmin','admin','manager'] },
   { path: '/commission',   label: 'Commission',   icon: '💰', roles: ['superadmin','admin','manager'] },
-  { path: '/payments',     label: 'Payments',     icon: '💳', roles: ['superadmin','admin','manager'] },
+  { path: '/payments',     label: 'Payments',     icon: '💳', roles: ['superadmin','admin','manager','staff'] },
   { path: '/expenses',     label: 'Expenses',     icon: '💸', roles: ['superadmin','admin','manager'] },
   { path: '/inventory',    label: 'Inventory',    icon: '📦', roles: ['superadmin','admin','manager'] },
   { path: '/attendance',   label: 'Attendance',   icon: '📋', roles: ['superadmin','admin','manager'] },

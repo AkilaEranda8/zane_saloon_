@@ -127,7 +127,7 @@ export default function DashboardPage() {
   const navigate        = useNavigate();
   const { toast }       = useToast();
   const { isMobile }    = useBreakpoint();
-  const isAdmin         = ['superadmin','admin'].includes(user?.role);
+  const isAdmin         = ['superadmin','admin','manager','staff'].includes(user?.role);
   const refreshTimerRef = useRef(null);
 
   /* state */
