@@ -35,7 +35,7 @@ function LoyaltyBar({ pts }) {
 
 export default function CustomersPage() {
   const { user } = useAuth();
-  const canEdit      = ['superadmin', 'admin', 'manager'].includes(user?.role);
+  const canEdit      = ['superadmin', 'admin', 'manager', 'staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
 
   const [customers, setCustomers]   = useState([]);

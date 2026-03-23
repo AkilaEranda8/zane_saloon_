@@ -212,7 +212,7 @@ function ServiceMultiSelect({ services, selected, onChange }) {
 export default function PaymentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const canEdit  = ['superadmin','admin','manager'].includes(user?.role);
+  const canEdit  = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isAdmin  = ['superadmin','admin'].includes(user?.role);
   const hasFixedBranch = !!user?.branchId;
   const today = new Date().toISOString().slice(0,10);

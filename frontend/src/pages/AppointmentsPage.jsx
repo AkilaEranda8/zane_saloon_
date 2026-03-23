@@ -186,7 +186,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
 
 export default function AppointmentsPage() {
   const { user }     = useAuth();
-  const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
+  const canEdit      = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   const today        = new Date().toISOString().slice(0,10);
 
