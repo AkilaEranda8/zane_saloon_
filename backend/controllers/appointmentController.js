@@ -37,7 +37,20 @@ const list = async (req, res) => {
       ],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    // Attach additional service details
+    const data = await Promise.all(rows.map(async (r) => {
+      const plain = r.toJSON();
+      const extraIds = plain.additional_service_ids || [];
+      if (extraIds.length) {
+        const svcs = await Service.findAll({ where: { id: extraIds }, attributes: ['id','name','price','duration_minutes'] });
+        plain.additional_services = svcs;
+      } else {
+        plain.additional_services = [];
+      }
+      return plain;
+    }));
+
+    return res.json({ total: count, page, limit, data });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -102,7 +115,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency, additional_service_ids } = req.body;
 
     if (!branch_id || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
@@ -115,10 +128,12 @@ const create = async (req, res) => {
       if (svc) finalAmount = svc.price;
     }
 
+    const extraSvcIds = Array.isArray(additional_service_ids) ? additional_service_ids.map(Number).filter(Boolean) : [];
     const appt = await Appointment.create({
       branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
+      additional_service_ids: extraSvcIds,
     });
 
     // Fire-and-forget notification (only if phone provided)
@@ -152,10 +167,20 @@ const update = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    // Auto-update amount from service price when service changes
-    if (updates.service_id) {
-      const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
-      if (svc) updates.amount = svc.price;
+    // Handle additional services
+    if (req.body.additional_service_ids !== undefined) {
+      updates.additional_service_ids = Array.isArray(req.body.additional_service_ids)
+        ? req.body.additional_service_ids.map(Number).filter(Boolean)
+        : [];
+    }
+
+    // Auto-update amount from all service prices when services change
+    if (updates.service_id || updates.additional_service_ids !== undefined) {
+      const primaryId  = updates.service_id || appt.service_id;
+      const extraIds   = updates.additional_service_ids ?? (appt.additional_service_ids || []);
+      const allIds     = [primaryId, ...extraIds].filter(Boolean);
+      const svcs       = await Service.findAll({ where: { id: allIds }, attributes: ['id','price'] });
+      updates.amount   = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
     }
 
     await appt.update(updates);

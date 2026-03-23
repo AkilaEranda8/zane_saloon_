@@ -24,7 +24,7 @@ const STATUS_META = {
   cancelled:  { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled'  },
   no_show:    { color:'#64748B', bg:'#F8FAFC', label:'No Show'    },
 };
-const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', additional_service_ids:[], staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -148,7 +148,12 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.phone && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.phone}</div>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>{row.service?.name||''}</span>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+          {row.service?.name && <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:12, fontWeight:600, color:'#475467' }}>{row.service.name}</span>}
+          {(row.additional_services||[]).map(s=>(
+            <span key={s.id} style={{ background:'#EDE9FE', padding:'3px 9px', borderRadius:6, fontSize:12, fontWeight:500, color:'#5B21B6' }}>{s.name}</span>
+          ))}
+        </div>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {row.staff?.name ? (
@@ -336,16 +341,17 @@ export default function AppointmentsPage() {
   };
 
   const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, additional_service_ids:row.additional_service_ids||[], staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
     if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
+      const payload = { ...form, additional_service_ids: form.additional_service_ids || [] };
       const res = editItem
-        ? await api.put(`/appointments/${editItem.id}`, form)
-        : await api.post('/appointments', form);
+        ? await api.put(`/appointments/${editItem.id}`, payload)
+        : await api.post('/appointments', payload);
       // Redeem package session if a package was selected (new appointments only)
       if (!editItem && selectedPkg && form.service_id) {
         try {
@@ -576,14 +582,69 @@ export default function AppointmentsPage() {
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
-              <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select></FormGroup>
-            <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
-              <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select></FormGroup>
-          </div>
+          {/* Services multi-select */}
+          <FormGroup label="Services" required>
+            <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:180, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 10px' }}>
+              {services.map(s => {
+                const isPrimary = String(form.service_id) === String(s.id);
+                const isExtra   = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
+                const isSel     = isPrimary || isExtra;
+                return (
+                  <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 6px', borderRadius:7, cursor:'pointer', background:isSel?'#F5F3FF':'transparent', transition:'background 0.1s' }}>
+                    <input type="checkbox" checked={isSel} onChange={() => {
+                      setForm(f => {
+                        const cur = (f.additional_service_ids||[]).map(Number);
+                        if (isPrimary) {
+                          // Deselect primary — promote first extra as primary
+                          if (cur.length > 0) {
+                            const [newPrimary, ...rest] = cur;
+                            const svc = services.find(x => Number(x.id) === newPrimary);
+                            const total = rest.reduce((sum,id)=>{ const sv=services.find(x=>Number(x.id)===id); return sum+Number(sv?.price||0); },0) + Number(svc?.price||0);
+                            return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: total };
+                          }
+                          return { ...f, service_id: '', additional_service_ids: [], amount: '' };
+                        }
+                        if (isExtra) {
+                          // Remove from extras
+                          const next = cur.filter(x => x !== Number(s.id));
+                          const allIds = [f.service_id, ...next].filter(Boolean);
+                          const total = allIds.reduce((sum,id)=>{ const sv=services.find(x=>String(x.id)===String(id)); return sum+Number(sv?.price||0); },0);
+                          return { ...f, additional_service_ids: next, amount: total };
+                        }
+                        // Not selected — if no primary yet, set as primary; else add to extras
+                        if (!f.service_id) {
+                          return { ...f, service_id: String(s.id), amount: Number(s.price||0) };
+                        }
+                        const next = [...cur, Number(s.id)];
+                        const allIds = [f.service_id, ...next].filter(Boolean);
+                        const total = allIds.reduce((sum,id)=>{ const sv=services.find(x=>String(x.id)===String(id)); return sum+Number(sv?.price||0); },0);
+                        return { ...f, additional_service_ids: next, amount: total };
+                      });
+                    }} style={{ accentColor:'#7C3AED', width:15, height:15, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?'#5B21B6':'#101828' }}>{s.name}</span>
+                      {isPrimary && <span style={{ marginLeft:6, fontSize:10, color:'#7C3AED', fontWeight:700, background:'#EDE9FE', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
+                    </div>
+                    <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs. {Number(s.price||0).toLocaleString()}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {/* Selected chips */}
+            {(form.service_id || (form.additional_service_ids||[]).length>0) && (
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
+                {[form.service_id, ...(form.additional_service_ids||[])].filter(Boolean).map((id,i) => {
+                  const svc = services.find(x=>String(x.id)===String(id));
+                  if (!svc) return null;
+                  return <span key={id} style={{ fontSize:11, background:'#EDE9FE', color:'#5B21B6', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}</span>;
+                })}
+                <span style={{ fontSize:11, color:'#059669', fontWeight:700, padding:'2px 0', alignSelf:'center' }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
+              </div>
+            )}
+          </FormGroup>
+          <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
+            <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
             <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>
