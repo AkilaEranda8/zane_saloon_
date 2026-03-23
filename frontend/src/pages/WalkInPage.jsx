@@ -531,7 +531,7 @@ export default function WalkInPage() {
                       background: '#FEE2E2', color: '#B91C1C', border: '1.5px solid #FECACA',
                       cursor: 'not-allowed', fontFamily: 'inherit',
                     }}>✓ Paid</button>
-                  ) : (entry.status === 'serving' || entry.status === 'waiting') && (
+                  ) : entry.status === 'serving' && (
                     <Button
                       size="sm"
                       style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 700 }}
