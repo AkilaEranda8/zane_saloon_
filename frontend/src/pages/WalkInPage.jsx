@@ -52,6 +52,7 @@ export default function WalkInPage() {
   const [custAll,        setCustAll]        = useState([]);
   const [custLoading,    setCustLoading]    = useState(false);
   const [showCustDrop,   setShowCustDrop]   = useState(false);
+  const [selectedCust,   setSelectedCust]   = useState(null);
   const custSearchRef = useRef(null);
 
   const [branches,  setBranches]  = useState([]);
@@ -178,8 +179,16 @@ export default function WalkInPage() {
   }, [custSearch, custAll]);
 
   const selectCustomer = (c) => {
+    setSelectedCust(c);
     setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || '' }));
-    setCustSearch(c.name);
+    setCustSearch('');
+    setShowCustDrop(false);
+  };
+
+  const clearSelectedCust = () => {
+    setSelectedCust(null);
+    setForm((f) => ({ ...f, customerName: '', phone: '' }));
+    setCustSearch('');
     setShowCustDrop(false);
   };
 
@@ -197,7 +206,7 @@ export default function WalkInPage() {
       <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
       </Button>
-      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
+      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCustSearch(''); setCustResults([]); setCustAll([]); setSelectedCust(null); setShowCustDrop(false); setShowCheckin(true); }}>
         + New Walk-in
       </Button>
     </div>
@@ -417,7 +426,7 @@ export default function WalkInPage() {
       )}
 
       {/*  CHECK-IN MODAL  */}
-      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
+      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCustSearch(''); setCustResults([]); setCustAll([]); setSelectedCust(null); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {formError && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
@@ -434,128 +443,174 @@ export default function WalkInPage() {
             </div>
           )}
 
-          {/* CUSTOMER SEARCH */}
-          <div style={{ position: 'relative' }} ref={custSearchRef}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Label style={{ margin: 0 }}>Select Customer from Database</Label>
-              {custLoading && (
-                <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>
-              )}
-              {!custLoading && custAll.length > 0 && (
-                <span style={{ fontSize: 11, color: MUTED }}>{custAll.length} customers loaded</span>
-              )}
-            </div>
-
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
-                value={custSearch}
-                onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
-                onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
-                onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
-                style={{
-                  width: '100%', padding: '9px 38px 9px 12px', borderRadius: 10,
-                  border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
-                  background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
-                }}
-              />
-              <span style={{
-                position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
-                fontSize: 15, color: '#94A3B8', pointerEvents: 'none',
-              }}>
-                {custLoading ? '⏳' : '🔍'}
-              </span>
-            </div>
-
-            {/* DROPDOWN — shows all or filtered */}
-            {showCustDrop && !custLoading && (custResults.length > 0 || custSearch.trim()) && (
+          {/* ── CUSTOMER SELECTION ── */}
+          {selectedCust ? (
+            /* SELECTED CUSTOMER CARD */
+            <div style={{
+              background: '#F0FDF4', border: '1.5px solid #86EFAC',
+              borderRadius: 12, padding: '12px 16px',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
               <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
-                background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
-                boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4,
-                maxHeight: 240, overflowY: 'auto',
+                width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
+                background: '#DCFCE7', color: '#16A34A',
+                fontWeight: 800, fontSize: 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '2px solid #86EFAC',
               }}>
-                {custResults.length === 0 ? (
-                  <div style={{ padding: '14px', fontSize: 13, color: '#94A3B8', textAlign: 'center' }}>
-                    No customers found for "<strong>{custSearch}</strong>"
-                  </div>
-                ) : (
-                  <>
-                    {custSearch.trim() && (
-                      <div style={{ padding: '6px 14px', fontSize: 11, color: MUTED, background: '#F9FAFB', borderBottom: '1px solid #F2F4F7', fontWeight: 600 }}>
-                        {custResults.length} result{custResults.length !== 1 ? 's' : ''} found
-                      </div>
-                    )}
-                    {custResults.slice(0, 50).map((c) => (
-                      <div key={c.id}
-                        onMouseDown={() => selectCustomer(c)}
-                        style={{
-                          padding: '9px 14px', cursor: 'pointer', display: 'flex',
-                          alignItems: 'center', gap: 10, borderBottom: '1px solid #F2F4F7',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F5F8FF')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
-                      >
-                        <div style={{
-                          width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF',
-                          color: '#2563EB', fontWeight: 700, fontSize: 13, flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {c.name?.charAt(0)?.toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{c.name}</div>
-                          {c.phone && <div style={{ fontSize: 11, color: MUTED }}>{c.phone}</div>}
-                        </div>
-                        {c.loyalty_points > 0 && (
-                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
-                            ★ {c.loyalty_points}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
-                      </div>
-                    ))}
-                  </>
+                {selectedCust.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#14532D' }}>{selectedCust.name}</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+                  {selectedCust.phone && (
+                    <span style={{ fontSize: 12, color: '#166534' }}>📞 {selectedCust.phone}</span>
+                  )}
+                  {selectedCust.loyalty_points > 0 && (
+                    <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
+                      ★ {selectedCust.loyalty_points} pts
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearSelectedCust}
+                style={{
+                  padding: '6px 14px', borderRadius: 8, border: '1.5px solid #86EFAC',
+                  background: '#fff', color: '#16A34A', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            /* SEARCH BOX */
+            <div style={{ position: 'relative' }} ref={custSearchRef}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Label style={{ margin: 0 }}>Search Customer</Label>
+                {custLoading && <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>}
+                {!custLoading && custAll.length > 0 && (
+                  <span style={{ fontSize: 11, color: MUTED }}>{custAll.length} customers</span>
                 )}
               </div>
-            )}
 
-            {/* Loading skeleton */}
-            {showCustDrop && custLoading && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
-                background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
-                boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4, padding: '12px 14px',
-              }}>
-                {[1,2,3].map((i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F2F4F7' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ height: 12, borderRadius: 6, background: '#F2F4F7', width: '60%', marginBottom: 5 }} />
-                      <div style={{ height: 10, borderRadius: 6, background: '#F2F4F7', width: '40%' }} />
-                    </div>
-                  </div>
-                ))}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
+                  value={custSearch}
+                  onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
+                  onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
+                  onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
+                  style={{
+                    width: '100%', padding: '9px 38px 9px 12px', borderRadius: 10,
+                    border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
+                    background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                <span style={{
+                  position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
+                  fontSize: 15, color: '#94A3B8', pointerEvents: 'none',
+                }}>
+                  {custLoading ? '⏳' : '🔍'}
+                </span>
               </div>
-            )}
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94A3B8', fontSize: 12, fontWeight: 500 }}>
-            <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-            or enter manually
-            <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-          </div>
+              {/* DROPDOWN */}
+              {showCustDrop && !custLoading && (custResults.length > 0 || custSearch.trim()) && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+                  background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
+                  boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4,
+                  maxHeight: 240, overflowY: 'auto',
+                }}>
+                  {custResults.length === 0 ? (
+                    <div style={{ padding: '14px', fontSize: 13, color: '#94A3B8', textAlign: 'center' }}>
+                      No customers found for "<strong>{custSearch}</strong>"
+                    </div>
+                  ) : (
+                    <>
+                      {custSearch.trim() && (
+                        <div style={{ padding: '6px 14px', fontSize: 11, color: MUTED, background: '#F9FAFB', borderBottom: '1px solid #F2F4F7', fontWeight: 600 }}>
+                          {custResults.length} result{custResults.length !== 1 ? 's' : ''} found
+                        </div>
+                      )}
+                      {custResults.slice(0, 50).map((c) => (
+                        <div key={c.id}
+                          onMouseDown={() => selectCustomer(c)}
+                          style={{
+                            padding: '9px 14px', cursor: 'pointer', display: 'flex',
+                            alignItems: 'center', gap: 10, borderBottom: '1px solid #F2F4F7',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#F5F8FF')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+                        >
+                          <div style={{
+                            width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF',
+                            color: '#2563EB', fontWeight: 700, fontSize: 13, flexShrink: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {c.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{c.name}</div>
+                            {c.phone && <div style={{ fontSize: 11, color: MUTED }}>{c.phone}</div>}
+                          </div>
+                          {c.loyalty_points > 0 && (
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
+                              ★ {c.loyalty_points}
+                            </span>
+                          )}
+                          <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
 
-          <div>
-            <Label>Customer Name *</Label>
-            <Input placeholder="Name or 'Walk-in'" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
-          </div>
+              {/* Loading skeleton */}
+              {showCustDrop && custLoading && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+                  background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
+                  boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4, padding: '12px 14px',
+                }}>
+                  {[1,2,3].map((i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F2F4F7' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ height: 12, borderRadius: 6, background: '#F2F4F7', width: '60%', marginBottom: 5 }} />
+                        <div style={{ height: 10, borderRadius: 6, background: '#F2F4F7', width: '40%' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          <div>
-            <Label>Phone</Label>
-            <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94A3B8', fontSize: 12, fontWeight: 500, marginTop: 10 }}>
+                <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
+                or enter manually below
+                <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Manual name/phone — only shown when no customer selected from DB */}
+          {!selectedCust && (
+            <>
+              <div>
+                <Label>Customer Name *</Label>
+                <Input placeholder="Name or 'Walk-in'" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+            </>
+          )}
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
