@@ -167,7 +167,7 @@ export default function WalkInPage() {
       toast({ type: 'success', message: 'Payment collected!' });
       setPayEntry(null);
     } catch (err) {
-      setPayError(err.response?.data?.message || 'Payment failed.');
+      setPayError(err.response?.data?.message || err.message || 'Payment failed. Check server logs.');
     } finally { setPaying(false); }
   };
 

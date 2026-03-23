@@ -19,6 +19,9 @@ require('./models');
 const app = express();
 const server = http.createServer(app);
 
+// Trust nginx reverse proxy (fixes X-Forwarded-For rate-limit validation)
+app.set('trust proxy', 1);
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 const allowedOrigins = [
   'http://localhost:5173',
