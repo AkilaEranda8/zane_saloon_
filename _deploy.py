@@ -1,4 +1,8 @@
-import paramiko, sys
+import paramiko, sys, io
+
+# Force UTF-8 output on Windows
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 host = '157.180.113.249'
 user = 'root'

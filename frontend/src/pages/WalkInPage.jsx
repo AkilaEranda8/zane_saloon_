@@ -421,14 +421,13 @@ export default function WalkInPage() {
                 placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
                 value={custSearch}
                 onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
-                onFocus={() => setShowCustDrop(true)}
+                onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
                 onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
                 style={{
                   width: '100%', padding: '9px 38px 9px 12px', borderRadius: 10,
                   border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
                   background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
                 }}
-                onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
               />
               <span style={{
                 position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
