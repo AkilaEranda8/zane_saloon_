@@ -105,6 +105,7 @@ export default function WalkInPage() {
   /* Package selection */
   const [custPackages,  setCustPackages]  = useState([]);
   const [selectedPkg,   setSelectedPkg]   = useState(null);
+  const [pkgLoading,    setPkgLoading]    = useState(false);
 
   /* Payment modal */
   const [payEntry,       setPayEntry]       = useState(null);
@@ -353,16 +354,18 @@ export default function WalkInPage() {
     setCustSearch('');
     setShowCustDrop(false);
     // Load active packages for this customer
-    setCustPackages([]); setSelectedPkg(null);
+    setCustPackages([]); setSelectedPkg(null); setPkgLoading(true);
     api.get(`/packages/customer/${c.id}/active`)
       .then((r) => setCustPackages(r.data || []))
-      .catch(() => setCustPackages([]));
+      .catch(() => setCustPackages([]))
+      .finally(() => setPkgLoading(false));
   };
 
   const clearSelectedCust = () => {
     setSelectedCust(null);
     setSelectedPkg(null);
     setCustPackages([]);
+    setPkgLoading(false);
     setForm((f) => ({ ...f, customerName: '', phone: '' }));
     setCustSearch('');
     setShowCustDrop(false);
@@ -749,13 +752,21 @@ export default function WalkInPage() {
             </div>
           )}
 
-          {/* ── PACKAGES (shown only when customer has active packages) ── */}
-          {selectedCust && custPackages.length > 0 && (
+          {/* ── PACKAGES (shown when loading or has packages) ── */}
+          {selectedCust && (pkgLoading || custPackages.length > 0) && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                 Packages
-                <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— click to use a session</span>
+                {pkgLoading
+                  ? <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— loading…</span>
+                  : <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— click to use a session</span>
+                }
               </div>
+              {pkgLoading ? (
+                <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
+                  Loading packages…
+                </div>
+              ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {custPackages.map((cp) => {
                   const isSel = selectedPkg?.id === cp.id;
@@ -801,6 +812,7 @@ export default function WalkInPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

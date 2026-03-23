@@ -227,6 +227,7 @@ export default function AppointmentsPage() {
   // Package selection for form
   const [custPackages, setCustPackages] = useState([]);
   const [selectedPkg, setSelectedPkg]   = useState(null);
+  const [pkgLoading,  setPkgLoading]    = useState(false);
 
   const [showPayment, setShowPayment]     = useState(false);
   const [paymentAppt, setPaymentAppt]     = useState(null);
@@ -280,10 +281,12 @@ export default function AppointmentsPage() {
 
   // Load active packages when customer is selected
   useEffect(() => {
-    if (!selectedCust?.id) { setCustPackages([]); setSelectedPkg(null); return; }
+    if (!selectedCust?.id) { setCustPackages([]); setSelectedPkg(null); setPkgLoading(false); return; }
+    setPkgLoading(true);
     api.get(`/packages/customer/${selectedCust.id}/active`)
       .then(r => setCustPackages(r.data || []))
-      .catch(() => setCustPackages([]));
+      .catch(() => setCustPackages([]))
+      .finally(() => setPkgLoading(false));
   }, [selectedCust]);
 
   const selectCust = (c) => {
@@ -558,12 +561,21 @@ export default function AppointmentsPage() {
               <Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" />
             </FormGroup>
           )}
-          {/* Active Packages — show only when customer has active packages */}
-          {selectedCust && custPackages.length > 0 && (
+          {/* Active Packages — show while loading or when packages exist */}
+          {selectedCust && (pkgLoading || custPackages.length > 0) && (
             <div>
               <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
-                Packages <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>— click to use a session</span>
+                Packages
+                {pkgLoading
+                  ? <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none', marginLeft:6 }}>— loading…</span>
+                  : <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none', marginLeft:6 }}>— click to use a session</span>
+                }
               </div>
+              {pkgLoading ? (
+                <div style={{ background:'#F9FAFB', borderRadius:10, padding:'10px 14px', fontSize:12, color:'#98A2B3', textAlign:'center' }}>
+                  Loading packages…
+                </div>
+              ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                 {custPackages.map(cp=>{
                   const isSel = selectedPkg?.id===cp.id;
@@ -590,6 +602,7 @@ export default function AppointmentsPage() {
                 })}
                 {selectedPkg && <div style={{ fontSize:11, color:'#7C3AED', marginTop:4, fontWeight:600 }}>Package session will be redeemed on save</div>}
               </div>
+              )}
             </div>
           )}
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
