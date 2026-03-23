@@ -468,7 +468,7 @@ export default function WalkInPage() {
                       style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 700 }}
                       onClick={() => openPayment(entry)}
                     >
-                      💰 Pay
+                      Pay
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
