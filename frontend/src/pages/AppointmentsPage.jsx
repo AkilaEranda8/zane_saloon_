@@ -438,7 +438,7 @@ export default function AppointmentsPage() {
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>setForm(f=>({...f,service_id:e.target.value}))}>
+            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
               <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </Select></FormGroup>
             <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
