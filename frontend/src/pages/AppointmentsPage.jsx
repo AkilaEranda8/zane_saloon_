@@ -604,50 +604,64 @@ export default function AppointmentsPage() {
           {/* Services multi-select */}
           <FormGroup label="Services" required>
             <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:180, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 10px' }}>
-              {services.map(s => {
-                const isPrimary = String(form.service_id) === String(s.id);
-                const isExtra   = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
-                const isSel     = isPrimary || isExtra;
-                return (
-                  <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 6px', borderRadius:7, cursor:'pointer', background:isSel?'#F5F3FF':'transparent', transition:'background 0.1s' }}>
-                    <input type="checkbox" checked={isSel} onChange={() => {
-                      setForm(f => {
-                        const cur = (f.additional_service_ids||[]).map(Number);
-                        if (isPrimary) {
-                          // Deselect primary — promote first extra as primary
-                          if (cur.length > 0) {
-                            const [newPrimary, ...rest] = cur;
-                            const svc = services.find(x => Number(x.id) === newPrimary);
-                            const total = rest.reduce((sum,id)=>{ const sv=services.find(x=>Number(x.id)===id); return sum+Number(sv?.price||0); },0) + Number(svc?.price||0);
-                            return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: total };
+              {(() => {
+                const pkgSvcIds = (selectedPkg?.package?.services || []).map(Number);
+                return services.map(s => {
+                  const isPrimary   = String(form.service_id) === String(s.id);
+                  const isExtra     = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
+                  const isSel       = isPrimary || isExtra;
+                  const coveredByPkg = pkgSvcIds.includes(Number(s.id));
+                  return (
+                    <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 8px', borderRadius:8, cursor:'pointer', background: coveredByPkg && isSel ? '#F5F3FF' : isSel ? '#F0FDF4' : 'transparent', border: coveredByPkg ? '1px solid #DDD6FE' : 'none', transition:'background 0.1s' }}>
+                      <input type="checkbox" checked={isSel} onChange={() => {
+                        setForm(f => {
+                          const cur = (f.additional_service_ids||[]).map(Number);
+                          const pkgIds = (selectedPkg?.package?.services || []).map(Number);
+                          // Price for a service = 0 if covered by selected package
+                          const svcPrice = (id) => {
+                            const sv = services.find(x=>Number(x.id)===Number(id));
+                            return pkgIds.includes(Number(id)) ? 0 : Number(sv?.price||0);
+                          };
+                          if (isPrimary) {
+                            if (cur.length > 0) {
+                              const [newPrimary, ...rest] = cur;
+                              const total = rest.reduce((sum,id)=>sum+svcPrice(id),0) + svcPrice(newPrimary);
+                              return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: total };
+                            }
+                            return { ...f, service_id: '', additional_service_ids: [], amount: '' };
                           }
-                          return { ...f, service_id: '', additional_service_ids: [], amount: '' };
-                        }
-                        if (isExtra) {
-                          // Remove from extras
-                          const next = cur.filter(x => x !== Number(s.id));
+                          if (isExtra) {
+                            const next = cur.filter(x => x !== Number(s.id));
+                            const allIds = [f.service_id, ...next].filter(Boolean);
+                            const total = allIds.reduce((sum,id)=>sum+svcPrice(id),0);
+                            return { ...f, additional_service_ids: next, amount: total };
+                          }
+                          if (!f.service_id) {
+                            return { ...f, service_id: String(s.id), amount: svcPrice(s.id) };
+                          }
+                          const next = [...cur, Number(s.id)];
                           const allIds = [f.service_id, ...next].filter(Boolean);
-                          const total = allIds.reduce((sum,id)=>{ const sv=services.find(x=>String(x.id)===String(id)); return sum+Number(sv?.price||0); },0);
+                          const total = allIds.reduce((sum,id)=>sum+svcPrice(id),0);
                           return { ...f, additional_service_ids: next, amount: total };
-                        }
-                        // Not selected — if no primary yet, set as primary; else add to extras
-                        if (!f.service_id) {
-                          return { ...f, service_id: String(s.id), amount: Number(s.price||0) };
-                        }
-                        const next = [...cur, Number(s.id)];
-                        const allIds = [f.service_id, ...next].filter(Boolean);
-                        const total = allIds.reduce((sum,id)=>{ const sv=services.find(x=>String(x.id)===String(id)); return sum+Number(sv?.price||0); },0);
-                        return { ...f, additional_service_ids: next, amount: total };
-                      });
-                    }} style={{ accentColor:'#7C3AED', width:15, height:15, flexShrink:0 }} />
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?'#5B21B6':'#101828' }}>{s.name}</span>
-                      {isPrimary && <span style={{ marginLeft:6, fontSize:10, color:'#7C3AED', fontWeight:700, background:'#EDE9FE', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
-                    </div>
-                    <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs. {Number(s.price||0).toLocaleString()}</span>
-                  </label>
-                );
-              })}
+                        });
+                      }} style={{ accentColor:'#7C3AED', width:15, height:15, flexShrink:0 }} />
+                      <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?(coveredByPkg?'#5B21B6':'#059669'):'#101828' }}>{s.name}</span>
+                        {isPrimary && !coveredByPkg && <span style={{ fontSize:10, color:'#059669', fontWeight:700, background:'#DCFCE7', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
+                        {coveredByPkg && <span style={{ fontSize:10, color:'#7C3AED', fontWeight:700, background:'#EDE9FE', padding:'1px 7px', borderRadius:4 }}>PKG</span>}
+                      </div>
+                      {coveredByPkg ? (
+                        <div style={{ textAlign:'right', flexShrink:0 }}>
+                          <span style={{ fontSize:11, color:'#94A3B8', textDecoration:'line-through', display:'block' }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                          <span style={{ fontSize:12, color:'#7C3AED', fontWeight:800 }}>FREE</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                      )}
+                    </label>
+                  );
+                });
+              })()}
             </div>
             {/* Selected chips */}
             {(form.service_id || (form.additional_service_ids||[]).length>0) && (
@@ -655,7 +669,9 @@ export default function AppointmentsPage() {
                 {[form.service_id, ...(form.additional_service_ids||[])].filter(Boolean).map((id,i) => {
                   const svc = services.find(x=>String(x.id)===String(id));
                   if (!svc) return null;
-                  return <span key={id} style={{ fontSize:11, background:'#EDE9FE', color:'#5B21B6', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}</span>;
+                  const pkgSvcIds = (selectedPkg?.package?.services || []).map(Number);
+                  const free = pkgSvcIds.includes(Number(id));
+                  return <span key={id} style={{ fontSize:11, background: free ? '#EDE9FE' : '#DCFCE7', color: free ? '#5B21B6' : '#059669', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}{free?' (FREE)':''}</span>;
                 })}
                 <span style={{ fontSize:11, color:'#059669', fontWeight:700, padding:'2px 0', alignSelf:'center' }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
               </div>

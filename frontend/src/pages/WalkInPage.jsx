@@ -834,21 +834,26 @@ export default function WalkInPage() {
             {/* Selected chips */}
             {form.serviceIds.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {selectedServices.map((s) => (
-                  <span key={s.id} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    padding: '4px 10px', borderRadius: 99,
-                    background: '#EEF2FF', border: '1.5px solid #C7D2FE',
-                    fontSize: 12, fontWeight: 600, color: '#4338CA',
-                  }}>
-                    {s.name}
-                    <button
-                      type="button"
-                      onClick={() => toggleService(s.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}
-                    >×</button>
-                  </span>
-                ))}
+                {selectedServices.map((s) => {
+                  const pkgSvcIds    = (selectedPkg?.package?.services || []).map(Number);
+                  const coveredByPkg = pkgSvcIds.includes(Number(s.id));
+                  return (
+                    <span key={s.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '4px 10px', borderRadius: 99,
+                      background: coveredByPkg ? '#EDE9FE' : '#EEF2FF',
+                      border: `1.5px solid ${coveredByPkg ? '#C4B5FD' : '#C7D2FE'}`,
+                      fontSize: 12, fontWeight: 600, color: coveredByPkg ? '#5B21B6' : '#4338CA',
+                    }}>
+                      {s.name}{coveredByPkg && <span style={{ fontSize: 10, marginLeft: 3, opacity: 0.8 }}>(FREE)</span>}
+                      <button
+                        type="button"
+                        onClick={() => toggleService(s.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: coveredByPkg ? '#7C3AED' : '#6366f1', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}
+                      >×</button>
+                    </span>
+                  );
+                })}
               </div>
             )}
 
@@ -858,7 +863,9 @@ export default function WalkInPage() {
               maxHeight: 180, overflowY: 'auto', background: '#FAFAFA',
             }}>
               {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
-                const selected = form.serviceIds.includes(s.id) || form.serviceIds.includes(String(s.id));
+                const selected      = form.serviceIds.includes(s.id) || form.serviceIds.includes(String(s.id));
+                const pkgSvcIds     = (selectedPkg?.package?.services || []).map(Number);
+                const coveredByPkg  = pkgSvcIds.includes(Number(s.id));
                 return (
                   <div
                     key={s.id}
@@ -866,8 +873,10 @@ export default function WalkInPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '9px 12px', cursor: 'pointer',
-                      background: selected ? '#EEF2FF' : 'transparent',
+                      background: selected ? (coveredByPkg ? '#F5F3FF' : '#EEF2FF') : 'transparent',
                       borderBottom: idx < arr.length - 1 ? '1px solid #F2F4F7' : 'none',
+                      border: coveredByPkg ? '1px solid #DDD6FE' : 'none',
+                      borderRadius: coveredByPkg ? 8 : 0,
                       transition: 'background 0.1s',
                     }}
                     onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = '#F8F9FF'; }}
@@ -875,17 +884,25 @@ export default function WalkInPage() {
                   >
                     <div style={{
                       width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                      border: `2px solid ${selected ? '#6366f1' : '#D0D5DD'}`,
-                      background: selected ? '#6366f1' : '#fff',
+                      border: `2px solid ${selected ? (coveredByPkg ? '#7C3AED' : '#6366f1') : '#D0D5DD'}`,
+                      background: selected ? (coveredByPkg ? '#7C3AED' : '#6366f1') : '#fff',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {selected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? '#4338CA' : DARK }}>{s.name}</span>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? (coveredByPkg ? '#5B21B6' : '#4338CA') : DARK }}>{s.name}</span>
+                      {coveredByPkg && <span style={{ fontSize: 10, color: '#7C3AED', fontWeight: 800, background: '#EDE9FE', padding: '1px 6px', borderRadius: 4 }}>PKG</span>}
                     </div>
                     <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{s.duration_minutes} min</span>
-                    {s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', flexShrink: 0 }}>Rs. {Number(s.price).toLocaleString()}</span>}
+                    {coveredByPkg ? (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        {s.price && <span style={{ fontSize: 10, color: '#94A3B8', textDecoration: 'line-through', display: 'block' }}>Rs.{Number(s.price).toLocaleString()}</span>}
+                        <span style={{ fontSize: 11, color: '#7C3AED', fontWeight: 800 }}>FREE</span>
+                      </div>
+                    ) : (
+                      s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', flexShrink: 0 }}>Rs.{Number(s.price).toLocaleString()}</span>
+                    )}
                   </div>
                 );
               })}
