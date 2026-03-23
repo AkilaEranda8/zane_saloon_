@@ -164,7 +164,7 @@ export default function WalkInPage() {
       if (payEntry.status !== 'completed') {
         await api.patch(`/walkin/${payEntry.id}/status`, { status: 'completed' });
       }
-      toast({ type: 'success', message: 'Payment collected!' });
+      toast('Payment collected!', 'success');
       setPayEntry(null);
     } catch (err) {
       setPayError(err.response?.data?.message || err.message || 'Payment failed. Check server logs.');
