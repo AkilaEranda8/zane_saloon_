@@ -456,9 +456,6 @@ export default function WalkInPage() {
                   {entry.status === 'waiting' && (
                     <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
                   )}
-                  {entry.status === 'serving' && (
-                    <Button size="sm" onClick={() => changeStatus(entry.id, 'completed')}>Done</Button>
-                  )}
                   {(entry.status === 'serving' || entry.status === 'completed' || entry.status === 'waiting') && (
                     <Button
                       size="sm"
