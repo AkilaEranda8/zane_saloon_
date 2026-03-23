@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
@@ -14,6 +14,48 @@ const DEFAULT_CATS = ['Hair', 'Beard', 'Skin', 'Nail', 'Massage', 'Other'];
 const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#D97706', Massage: '#059669', Other: '#64748B' };
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
 const EMPTY = { name: '', category: 'Hair', duration_minutes: 30, price: '', description: '', is_active: true };
+
+const AVATAR_PALETTES = [
+  { bg:'#EFF6FF', color:'#2563EB' }, { bg:'#FDF4FF', color:'#9333EA' },
+  { bg:'#FFF7ED', color:'#EA580C' }, { bg:'#F0FDF4', color:'#16A34A' },
+  { bg:'#FEF2F2', color:'#DC2626' }, { bg:'#F0F9FF', color:'#0284C7' },
+];
+function StaffPill({ name, selected, onClick }) {
+  const idx = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_PALETTES.length;
+  const { bg, color } = AVATAR_PALETTES[idx];
+  const initials = name.trim().split(/\s+/).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+  return (
+    <button type="button" onClick={onClick} style={{
+      display:'flex', alignItems:'center', gap:7, padding:'5px 12px 5px 6px',
+      borderRadius:20, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
+      border:`1.5px solid ${selected ? color : '#E4E7EC'}`,
+      background: selected ? bg : '#fff',
+    }}>
+      <div style={{ width:22, height:22, borderRadius:'50%', background:selected?color:`${color}30`, color:selected?'#fff':color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, flexShrink:0 }}>{initials}</div>
+      <span style={{ fontSize:12, fontWeight:selected?700:500, color:selected?color:'#344054' }}>{name}</span>
+      {selected && <span style={{ fontSize:11, color }}>✓</span>}
+    </button>
+  );
+}
+
+function ViewStaff({ serviceId }) {
+  const [staff, setStaff] = useState([]);
+  useEffect(() => {
+    if (!serviceId) return;
+    api.get(`/services/${serviceId}/staff`)
+      .then(r => setStaff(r.data || []))
+      .catch(() => setStaff([]));
+  }, [serviceId]);
+  if (!staff.length) return null;
+  return (
+    <div style={{ marginTop:16, textAlign:'left' }}>
+      <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Assigned Staff</div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {staff.map(s => <StaffPill key={s.id} name={s.name} selected={true} onClick={() => {}} />)}
+      </div>
+    </div>
+  );
+}
 
 export default function ServicesPage() {
   const { user }  = useAuth();
@@ -32,9 +74,18 @@ export default function ServicesPage() {
   const [formErr, setFormErr]   = useState('');
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [allStaff, setAllStaff]     = useState([]);
+  const [svcStaff, setSvcStaff]     = useState([]); // selected staff IDs for current service
 
   // Build dynamic categories list from defaults + any custom ones from existing services
   const CATS = [...new Set([...DEFAULT_CATS, ...allSvcs.map(s => s.category).filter(Boolean)])];
+
+  // Load all staff once
+  useEffect(() => {
+    api.get('/staff', { params: { limit: 200 } })
+      .then(r => setAllStaff(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,15 +102,29 @@ export default function ServicesPage() {
   useEffect(() => { load(); }, [load]);
 
   const catCounts  = allSvcs.reduce((acc, s) => { acc[s.category] = (acc[s.category] || 0) + 1; return acc; }, {});
-  const openAdd    = () => { setEditItem(null); setForm(EMPTY); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({ ...row }); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm(EMPTY); setFormErr(''); setNewCatMode(false); setNewCatName(''); setSvcStaff([]); setShowForm(true); };
+  const openEdit   = async row => {
+    setEditItem(row); setForm({ ...row }); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true);
+    // Load existing staff for this service
+    try {
+      const r = await api.get(`/services/${row.id}/staff`);
+      setSvcStaff((r.data || []).map(s => Number(s.id)));
+    } catch { setSvcStaff([]); }
+  };
   const openView   = row => { setViewItem(row); setShowView(true); };
 
   const handleSave = async () => {
     if (!form.name || !form.price) return setFormErr('Name and price are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/services/${editItem.id}`, form) : await api.post('/services', form);
+      const saved = editItem
+        ? await api.put(`/services/${editItem.id}`, form)
+        : await api.post('/services', form);
+      const svcId = saved.data?.id || editItem?.id;
+      // Save staff assignments
+      if (svcId && canEdit) {
+        await api.put(`/services/${svcId}/staff`, { staffIds: svcStaff });
+      }
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
@@ -200,6 +265,26 @@ export default function ServicesPage() {
           </div>
           <FormGroup label="Price (Rs.)" required><Input type="number" value={form.price} placeholder="1500" onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></FormGroup>
           <FormGroup label="Description"><Input value={form.description || ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief description" /></FormGroup>
+
+          {/* Staff Assignment */}
+          {allStaff.length > 0 && (
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
+                Assigned Staff <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>(optional)</span>
+              </div>
+              <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+                {allStaff.map(s => (
+                  <StaffPill key={s.id} name={s.name} selected={svcStaff.includes(Number(s.id))}
+                    onClick={() => setSvcStaff(prev => prev.includes(Number(s.id)) ? prev.filter(x => x !== Number(s.id)) : [...prev, Number(s.id)])} />
+                ))}
+              </div>
+              {svcStaff.length > 0 && (
+                <div style={{ fontSize:11, color:'#059669', marginTop:6, fontWeight:600 }}>
+                  {svcStaff.length} staff assigned
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -219,6 +304,8 @@ export default function ServicesPage() {
               </div>
             </div>
             {viewItem.description && <p style={{ color: '#475467', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{viewItem.description}</p>}
+            {/* Assigned Staff */}
+            <ViewStaff serviceId={viewItem.id} />
             {canEdit && <div style={{ marginTop: 16 }}><Button variant="primary" onClick={() => { setShowView(false); openEdit(viewItem); }}>Edit Service</Button></div>}
           </div>
         )}

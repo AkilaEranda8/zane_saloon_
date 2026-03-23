@@ -9,10 +9,12 @@ router.get('/categories', ctrl.categories);
 // Category mutations MUST come before /:id to avoid Express matching 'categories' as an id
 router.put('/categories/rename', requireRole('superadmin', 'admin'), ctrl.renameCategory);
 router.post('/categories/delete', requireRole('superadmin', 'admin'), ctrl.deleteCategory);
-router.get('/',       ctrl.list);
-router.get('/:id',    ctrl.getOne);
-router.post('/',      requireRole('superadmin', 'admin'), ctrl.create);
-router.put('/:id',    requireRole('superadmin', 'admin'), ctrl.update);
-router.delete('/:id', requireRole('superadmin', 'admin'), ctrl.remove);
+router.get('/',                ctrl.list);
+router.get('/:id',             ctrl.getOne);
+router.post('/',               requireRole('superadmin', 'admin'), ctrl.create);
+router.put('/:id',             requireRole('superadmin', 'admin'), ctrl.update);
+router.delete('/:id',          requireRole('superadmin', 'admin'), ctrl.remove);
+router.get('/:id/staff',       ctrl.getStaff);
+router.put('/:id/staff',       requireRole('superadmin', 'admin'), ctrl.setStaff);
 
 module.exports = router;

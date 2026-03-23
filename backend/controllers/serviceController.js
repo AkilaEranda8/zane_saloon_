@@ -1,4 +1,4 @@
-const { Service } = require('../models');
+const { Service, Staff, StaffSpecialization } = require('../models');
 
 const list = async (req, res) => {
   try {
@@ -114,4 +114,36 @@ const deleteCategory = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, categories, renameCategory, deleteCategory };
+// Get all staff assigned to a service
+const getStaff = async (req, res) => {
+  try {
+    const specs = await StaffSpecialization.findAll({
+      where: { service_id: req.params.id },
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name', 'role_title', 'branch_id'] }],
+    });
+    return res.json(specs.map(s => s.staff).filter(Boolean));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// Replace all staff assignments for a service
+const setStaff = async (req, res) => {
+  try {
+    const serviceId = Number(req.params.id);
+    const staffIds  = (req.body.staffIds || []).map(Number).filter(Boolean);
+
+    // Delete old, insert new
+    await StaffSpecialization.destroy({ where: { service_id: serviceId } });
+    if (staffIds.length) {
+      await StaffSpecialization.bulkCreate(staffIds.map(sid => ({ staff_id: sid, service_id: serviceId })));
+    }
+    return res.json({ message: 'Staff updated.', staffIds });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { list, getOne, create, update, remove, categories, renameCategory, deleteCategory, getStaff, setStaff };
