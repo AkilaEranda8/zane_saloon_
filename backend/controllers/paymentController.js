@@ -92,8 +92,9 @@ const create = async (req, res) => {
       const { Staff: StaffModel } = require('../models');
       const staffMember = await StaffModel.findByPk(staff_id, { transaction: t });
       if (staffMember) {
+        const commissionBase = Math.max(0, total_amount - loyalty_discount);
         commission_amount = staffMember.commission_type === 'percentage'
-          ? (total_amount * parseFloat(staffMember.commission_value)) / 100
+          ? (commissionBase * parseFloat(staffMember.commission_value)) / 100
           : parseFloat(staffMember.commission_value);
       }
     }
@@ -149,7 +150,7 @@ const create = async (req, res) => {
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
         if (usePoints && loyalty_discount > 0) {
-          const pointsUsed = Math.ceil(loyalty_discount);
+          const pointsUsed = Math.floor(loyalty_discount);
           newPoints = Math.max(0, cust.loyalty_points - pointsUsed) + points_earned;
         }
         await cust.update({
@@ -194,7 +195,7 @@ const create = async (req, res) => {
         // Generate review token and send review request
         const { randomUUID } = require('crypto');
         const reviewToken = randomUUID();
-        Payment.update({ review_token: reviewToken }, { where: { id: payment.id } });
+        await Payment.update({ review_token: reviewToken }, { where: { id: payment.id } });
         notifyReviewRequest(payment.toJSON(), customer, service, branch, reviewToken);
       }
     }

@@ -18,11 +18,19 @@ const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Only allow valid roles; prevent privilege escalation
+    const ALLOWED_ROLES = ['staff', 'manager', 'admin'];
+    // Only superadmin can create other superadmins
+    if (role === 'superadmin' && req.user?.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only superadmins can create superadmin accounts.' });
+    }
+    const assignedRole = ALLOWED_ROLES.includes(role) || role === 'superadmin' ? role : 'staff';
+
     const user = await User.create({
       username,
       password: hashedPassword,
       name,
-      role:      role || 'staff',
+      role:      assignedRole,
       branch_id: branch_id || null,
       color:     color || '#6366f1',
     });
@@ -54,7 +62,6 @@ const register = async (req, res) => {
         avatar:   user.avatar,
         color:    user.color,
       },
-      token,
     });
   } catch (err) {
     console.error('register error:', err);
@@ -113,7 +120,6 @@ const login = async (req, res) => {
         color:    user.color,
         branch:   user.branch,
       },
-      token,
     });
   } catch (err) {
     console.error('login error:', err);
@@ -123,7 +129,11 @@ const login = async (req, res) => {
 
 // ─── POST /api/auth/logout ───────────────────────────────────────────────────
 const logout = (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax' });
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
   return res.json({ message: 'Logged out.' });
 };
 

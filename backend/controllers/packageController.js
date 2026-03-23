@@ -158,12 +158,18 @@ const customerPackages = async (req, res) => {
       order: [['purchase_date', 'DESC']],
     });
 
-    // Auto-expire overdue packages
+    // Auto-expire overdue packages (single bulk update instead of N+1)
     const today = new Date().toISOString().slice(0, 10);
-    for (const cp of rows) {
-      if (cp.status === 'active' && cp.expiry_date < today) {
-        await cp.update({ status: 'expired' });
-      }
+    const expiredIds = rows
+      .filter((cp) => cp.status === 'active' && cp.expiry_date < today)
+      .map((cp) => cp.id);
+    if (expiredIds.length) {
+      const { CustomerPackage: CP } = require('../models');
+      await CP.update({ status: 'expired' }, { where: { id: expiredIds } });
+      expiredIds.forEach((id) => {
+        const cp = rows.find((r) => r.id === id);
+        if (cp) cp.status = 'expired';
+      });
     }
 
     return res.json(rows);
@@ -239,7 +245,8 @@ const purchase = async (req, res) => {
       branch_id:      effectiveBranchId,
       purchase_date:  today,
       expiry_date:    expiryDate.toISOString().slice(0, 10),
-      sessions_total: pkg.sessions_count || 0,
+      // null sessions_count means unlimited (membership) — keep null, not 0
+      sessions_total: pkg.sessions_count ?? null,
       sessions_used:  0,
       status:         'active',
       amount_paid:    pkg.package_price,

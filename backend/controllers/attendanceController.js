@@ -4,9 +4,6 @@ const { Attendance, Staff, Branch } = require('../models');
 const list = async (req, res) => {
   try {
     const where = {};
-    if (req.userBranchId) {
-      // Join with staff to filter by branch
-    }
     if (req.query.staffId) where.staff_id = req.query.staffId;
     if (req.query.date)    where.date     = req.query.date;
 
@@ -52,7 +49,12 @@ const upsert = async (req, res) => {
     });
 
     if (!created) {
-      await record.update({ check_in, check_out, status, note });
+      const updates = {};
+      if (check_in  !== undefined) updates.check_in  = check_in;
+      if (check_out !== undefined) updates.check_out = check_out;
+      if (status    !== undefined) updates.status    = status;
+      if (note      !== undefined) updates.note      = note;
+      await record.update(updates);
     }
 
     return res.status(created ? 201 : 200).json(record);

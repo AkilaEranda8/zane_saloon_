@@ -134,7 +134,17 @@ const update = async (req, res) => {
     const appt = await Appointment.findByPk(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
 
-    await appt.update(req.body);
+    // Enforce branch ownership for branch-scoped users
+    if (req.userBranchId && appt.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+    }
+
+    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
+    const updates = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    await appt.update(updates);
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -151,6 +161,11 @@ const changeStatus = async (req, res) => {
 
     const appt = await Appointment.findByPk(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+
+    // Enforce branch ownership for branch-scoped users
+    if (req.userBranchId && appt.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+    }
 
     await appt.update({ status });
 
@@ -178,6 +193,11 @@ const remove = async (req, res) => {
   try {
     const appt = await Appointment.findByPk(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+
+    // Enforce branch ownership for branch-scoped users
+    if (req.userBranchId && appt.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+    }
 
     await appt.destroy();
     return res.json({ message: 'Appointment deleted.' });

@@ -68,11 +68,13 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.INTEGER,
     allowNull: true,
     references: { model: 'appointments', key: 'id' },
+    onDelete: 'SET NULL',
   },
   next_appointment_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
     references: { model: 'appointments', key: 'id' },
+    onDelete: 'SET NULL',
   },
 }, {
   tableName: 'appointments',

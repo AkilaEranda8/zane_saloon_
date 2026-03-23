@@ -95,7 +95,19 @@ const update = async (req, res) => {
     const staff = await Staff.findByPk(req.params.id);
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
-    await staff.update(req.body);
+    // Prevent cross-branch updates for non-superadmin/admin
+    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
+    }
+
+    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
+    // Only superadmin/admin can reassign to a different branch
+    if (['superadmin', 'admin'].includes(req.user?.role)) allowed.push('branch_id');
+    const updates = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    await staff.update(updates);
     return res.json(staff);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -121,11 +133,6 @@ const commissionSummary = async (req, res) => {
     if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
     else if (branchId) staffWhere.branch_id = branchId;
 
-    const staffRows = await Staff.findAll({
-      where: staffWhere,
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
-    });
-
     const paymentWhere = {};
     if (month && year) {
       const m = String(month).padStart(2, '0');
@@ -135,24 +142,48 @@ const commissionSummary = async (req, res) => {
       paymentWhere.date = { [Op.between]: [start, end] };
     }
 
-    const results = [];
-    for (const staff of staffRows) {
-      const where = { ...paymentWhere, staff_id: staff.id };
-      const payments = await Payment.findAll({ where, attributes: ['total_amount', 'commission_amount'] });
-      const totalRevenue = payments.reduce((s, p) => s + parseFloat(p.total_amount || 0), 0);
-      const totalCommission = payments.reduce((s, p) => s + parseFloat(p.commission_amount || 0), 0);
-      results.push({
-        staffId: staff.id,
-        staffName: staff.name,
-        role: staff.role_title,
-        branchName: staff.branch?.name || '',
-        commissionType: staff.commission_type,
-        commissionValue: staff.commission_value,
-        appointmentCount: payments.length,
-        totalRevenue,
-        totalCommission,
-      });
+    // Fetch all staff first
+    const staffRows = await Staff.findAll({
+      where: staffWhere,
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+    });
+
+    if (!staffRows.length) return res.json([]);
+
+    // Single aggregated query for payment totals (avoids N+1)
+    const staffIds = staffRows.map((s) => s.id);
+    const paymentsAgg = await Payment.findAll({
+      where: { ...paymentWhere, staff_id: { [Op.in]: staffIds } },
+      attributes: [
+        'staff_id',
+        [fn('SUM', col('total_amount')),     'totalRevenue'],
+        [fn('SUM', col('commission_amount')), 'totalCommission'],
+        [fn('COUNT', col('id')),             'appointmentCount'],
+      ],
+      group: ['staff_id'],
+      raw: true,
+    });
+
+    // Build lookup map
+    const aggMap = {};
+    for (const row of paymentsAgg) {
+      aggMap[row.staff_id] = row;
     }
+
+    const results = staffRows.map((staff) => {
+      const agg = aggMap[staff.id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
+      return {
+        staffId:         staff.id,
+        staffName:       staff.name,
+        role:            staff.role_title,
+        branchName:      staff.branch?.name || '',
+        commissionType:  staff.commission_type,
+        commissionValue: staff.commission_value,
+        appointmentCount: parseInt(agg.appointmentCount) || 0,
+        totalRevenue:    parseFloat(agg.totalRevenue)    || 0,
+        totalCommission: parseFloat(agg.totalCommission) || 0,
+      };
+    });
 
     return res.json(results);
   } catch (err) {

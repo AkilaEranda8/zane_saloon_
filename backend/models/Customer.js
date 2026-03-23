@@ -18,6 +18,7 @@ const Customer = sequelize.define('Customer', {
   email: {
     type: DataTypes.STRING(255),
     allowNull: true,
+    validate: { isEmail: true },
   },
   branch_id: {
     type: DataTypes.INTEGER,
@@ -42,6 +43,9 @@ const Customer = sequelize.define('Customer', {
 }, {
   tableName: 'customers',
   timestamps: true,
+  indexes: [
+    { unique: true, fields: ['phone', 'branch_id'], name: 'customers_phone_branch_unique' },
+  ],
 });
 
 module.exports = Customer;

@@ -2,6 +2,8 @@ require('dotenv').config();
 const express      = require('express');
 const http         = require('http');
 const cors         = require('cors');
+const helmet       = require('helmet');
+const rateLimit    = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const path         = require('path');
 const { sequelize } = require('./config/database');
@@ -36,9 +38,32 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Rate limiting — auth endpoints most restrictive
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max:      20,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { message: 'Too many attempts, please try again after 15 minutes.' },
+});
+
+// General API rate limit
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max:      200,
+  standardHeaders: true,
+  legacyHeaders:   false,
+});
+
+app.use('/api/auth/login',    authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/',              apiLimiter);
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
 initSocket(server, { origin: allowedOrigins, credentials: true });
+
 app.use(express.json());
 app.use(cookieParser());
 

@@ -76,7 +76,12 @@ const update = async (req, res) => {
     const cust = await Customer.findByPk(req.params.id);
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
 
-    await cust.update(req.body);
+    const allowed = ['name', 'phone', 'email', 'branch_id'];
+    const updates = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    await cust.update(updates);
     return res.json(cust);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

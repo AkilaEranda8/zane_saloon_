@@ -67,10 +67,22 @@ const update = async (req, res) => {
     const updates = {};
     if (name !== undefined)      updates.name      = name;
     if (username !== undefined)  updates.username   = username;
-    if (role !== undefined)      updates.role       = role;
+    // Only superadmin may change roles to prevent privilege escalation
+    if (role !== undefined) {
+      if (req.user?.role !== 'superadmin') {
+        return res.status(403).json({ message: 'Only superadmins may change user roles.' });
+      }
+      updates.role = role;
+    }
     if (branch_id !== undefined) updates.branch_id  = branch_id || null;
     if (is_active !== undefined) updates.is_active  = is_active;
     if (password)                updates.password   = await bcrypt.hash(password, 10);
+
+    // Check username uniqueness before updating
+    if (username !== undefined && username !== user.username) {
+      const existing = await User.findOne({ where: { username } });
+      if (existing) return res.status(409).json({ message: 'Username already exists.' });
+    }
 
     await user.update(updates);
     const result = user.toJSON();

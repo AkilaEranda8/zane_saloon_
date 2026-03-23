@@ -43,7 +43,8 @@ const services = async (req, res) => {
     const where = getBranchWhere(req);
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
-      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-31`] };
+      const lastDay = new Date(year, month, 0).getDate();
+      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
     }
 
     const rows = await Payment.findAll({
@@ -74,7 +75,8 @@ const staffReport = async (req, res) => {
     const payWhere = { ...branchWhere };
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
-      payWhere.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-31`] };
+      const lastDay = new Date(year, month, 0).getDate();
+      payWhere.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
     }
 
     const rows = await Staff.findAll({
@@ -123,7 +125,8 @@ const appointmentStats = async (req, res) => {
     const where = getBranchWhere(req);
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
-      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-31`] };
+      const lastDay = new Date(year, month, 0).getDate();
+      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
     }
 
     const rows = await Appointment.findAll({
@@ -148,7 +151,8 @@ const dashboard = async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const [yrStr, moStr] = today.split('-');
     const monthStart = `${yrStr}-${moStr}-01`;
-    const monthEnd   = `${yrStr}-${moStr}-31`;
+    const lastDay    = new Date(parseInt(yrStr), parseInt(moStr), 0).getDate();
+    const monthEnd   = `${yrStr}-${moStr}-${lastDay}`;
 
     const [
       todayAppts,

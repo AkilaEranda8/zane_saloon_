@@ -29,8 +29,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpass}
       MYSQL_DATABASE: ${DB_NAME:-zanesalon}
-    ports:
-      - "${DB_PORT:-3307}:3306"
+    # Do NOT expose MySQL port to the host in production
+    expose:
+      - "3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:

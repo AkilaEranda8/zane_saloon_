@@ -45,7 +45,8 @@ export default function ReviewFormPage() {
   const [svcRating,  setSvcRating]  = useState(0);
   const [staffRating, setStaffRating] = useState(0);
   const [comment,    setComment]    = useState('');
-  const [submitting, setSubmitting] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError,    setFormError]    = useState('');
 
   // ── Load form data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,8 +69,9 @@ export default function ReviewFormPage() {
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (svcRating === 0) { setSubmitting('Please rate the service.'); return; }
-    setSubmitting('sending');
+    if (svcRating === 0) { setFormError('Please rate the service.'); return; }
+    setIsSubmitting(true);
+    setFormError('');
     try {
       await api.post(`/reviews/submit/${token}`, {
         service_rating: svcRating,
@@ -78,7 +80,9 @@ export default function ReviewFormPage() {
       });
       setStatus('submitted');
     } catch (err) {
-      setSubmitting(err.response?.data?.message || 'Submission failed. Please try again.');
+      setFormError(err.response?.data?.message || 'Submission failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -196,20 +200,18 @@ export default function ReviewFormPage() {
       </div>
 
       {/* Error message */}
-      {submitting && submitting !== 'sending' && (
+      {formError && (
         <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fee2e2', borderRadius: 8, fontSize: 14, color: '#991b1b' }}>
-          {submitting}
+          {formError}
         </div>
-      )}
-
-      <button
+      )}      <button
         type="submit"
-        disabled={submitting === 'sending'}
+        disabled={isSubmitting}
         style={{
           width: '100%', padding: '13px', borderRadius: 10, border: 'none',
           background: `linear-gradient(135deg, ${PRIMARY}, ${BLUE})`,
-          color: '#fff', fontSize: 16, fontWeight: 700, cursor: submitting === 'sending' ? 'not-allowed' : 'pointer',
-          opacity: submitting === 'sending' ? 0.7 : 1, fontFamily: 'inherit',
+          color: '#fff', fontSize: 16, fontWeight: 700, cursor: isSubmitting ? 'not-allowed' : 'pointer',
+          opacity: isSubmitting ? 0.7 : 1, fontFamily: 'inherit',
           transition: 'opacity 0.2s',
         }}
       >

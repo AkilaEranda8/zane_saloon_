@@ -1,14 +1,17 @@
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const { WalkIn, Service, Staff } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
 
-// Helper: generate next token for a branch+date
-async function generateToken(branchId, date) {
+// Helper: generate next token for a branch+date atomically inside a transaction
+async function generateToken(branchId, date, transaction) {
   const count = await WalkIn.count({
     where: { branch_id: branchId, check_in_date: date },
+    transaction,
+    lock: transaction.LOCK.UPDATE,
   });
   const num = count + 1;
   return 'T' + String(num).padStart(3, '0');
@@ -23,8 +26,7 @@ const defaultInclude = [
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
 exports.list = async (req, res) => {
   try {
-    const { branchId, date, status } = req.query;
-    const where = {
+    const { branchId, date, status } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
       branch_id: branchId,
       check_in_date: date || today(),
     };
@@ -46,8 +48,7 @@ exports.list = async (req, res) => {
 // ── GET /api/walkin/stats ─────────────────────────────────────────────────────
 exports.stats = async (req, res) => {
   try {
-    const { branchId, date } = req.query;
-    const where = {
+    const { branchId, date } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
       branch_id: branchId,
       check_in_date: date || today(),
     };
@@ -125,7 +126,7 @@ exports.updateStatus = async (req, res) => {
 
     entry.status = status;
     if (status === 'serving') {
-      entry.check_in_time = new Date().toTimeString().slice(0, 8);
+      entry.serve_start_time = new Date().toTimeString().slice(0, 8);
     }
     await entry.save();
 
@@ -151,7 +152,7 @@ exports.assign = async (req, res) => {
 
     entry.staff_id = staffId;
     entry.status = 'serving';
-    entry.check_in_time = new Date().toTimeString().slice(0, 8);
+    entry.serve_start_time = new Date().toTimeString().slice(0, 8);
     await entry.save();
 
     const full = await WalkIn.findByPk(id, { include: defaultInclude });

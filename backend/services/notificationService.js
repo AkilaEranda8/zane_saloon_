@@ -162,14 +162,28 @@ async function sendWhatsApp({ to, message, meta = {} }) {
   });
 }
 
+// ── HTML escaping helper ─────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 // ── Email HTML builder ────────────────────────────────────────────────────────
 function buildEmailWrapper(title, bodyHtml, branchName = 'Zane Salon', branchPhone = '') {
+  const safeBranchName  = escapeHtml(branchName);
+  const safeBranchPhone = escapeHtml(branchPhone);
+  const safeTitle       = escapeHtml(title);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f7ff;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7ff;padding:32px 0;">
@@ -188,8 +202,8 @@ function buildEmailWrapper(title, bodyHtml, branchName = 'Zane Salon', branchPho
         <tr>
           <td style="background:#f8faff;padding:24px 40px;border-top:1px solid #e2e8f0;text-align:center;">
             <p style="margin:0 0 6px;font-size:13px;color:#6b7280;">
-              <strong style="color:#1e3a8a;">${branchName}</strong>
-              ${branchPhone ? ` &nbsp;·&nbsp; 📞 ${branchPhone}` : ''}
+              <strong style="color:#1e3a8a;">${safeBranchName}</strong>
+              ${safeBranchPhone ? ` &nbsp;·&nbsp; 📞 ${safeBranchPhone}` : ''}
             </p>
             <p style="margin:0;font-size:11px;color:#9ca3af;">
               You're receiving this because you booked a service with us.

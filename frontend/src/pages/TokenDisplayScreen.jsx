@@ -1,19 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import axios from 'axios';
-
-// ── Colours ──────────────────────────────────────────────────────────────────
+import api from '../api/axios';
 const C = {
   bg1: '#0a0f1e', bg2: '#0f172a', card: '#141b2d', cardHover: '#1a2340',
   border: '#1e293b', blue: '#2563eb', purple: '#7c3aed', gold: '#fbbf24',
   text: '#f1f5f9', muted: '#64748b', dim: '#334155', green: '#22c55e', red: '#ef4444',
 };
 
-// ── Raw axios (no auth cookie needed) ────────────────────────────────────────
-const publicApi = axios.create({ baseURL: '/api', headers: { 'Content-Type': 'application/json' } });
-
-// ── CSS keyframes ────────────────────────────────────────────────────────────
+// ── Colours ──────────────────────────────────────────────────────
 const ANIMATIONS = `
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -49,7 +44,7 @@ const initials = (n) => (n || '?').split(' ').map((w) => w[0]).join('').slice(0,
 
 export default function TokenDisplayScreen() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const branchId = searchParams.get('branchId') || '1';
+  const branchId = searchParams.get('branchId');
 
   const [queue, setQueue]       = useState([]);
   const [stats, setStats]       = useState({ waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
@@ -61,7 +56,7 @@ export default function TokenDisplayScreen() {
 
   // ── Fetch branches ─────────────────────────────────────────────────
   useEffect(() => {
-    publicApi.get('/public/branches').then((r) => setBranches(r.data || [])).catch(() => {});
+    api.get('/public/branches').then((r) => setBranches(r.data || [])).catch(() => {});
   }, []);
 
   const currentBranch = branches.find((b) => String(b.id) === String(branchId));
@@ -74,10 +69,11 @@ export default function TokenDisplayScreen() {
 
   // ── Fetch data ─────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
+    if (!branchId) return;
     try {
       const [qRes, sRes] = await Promise.all([
-        publicApi.get(`/walkin?branchId=${branchId}`),
-        publicApi.get(`/walkin/stats?branchId=${branchId}`),
+        api.get(`/walkin?branchId=${branchId}`),
+        api.get(`/walkin/stats?branchId=${branchId}`),
       ]);
       setQueue(qRes.data || []);
       setStats(sRes.data || { waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
@@ -120,6 +116,17 @@ export default function TokenDisplayScreen() {
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════
+  if (!branchId) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `linear-gradient(160deg, ${C.bg1} 0%, ${C.bg2} 100%)`, color: C.text,
+        fontFamily: "'DM Sans', sans-serif", flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontSize: 40 }}>⚠️</div>
+        <p style={{ fontSize: 18, color: C.muted }}>No branch selected. Add <code>?branchId=&lt;id&gt;</code> to the URL.</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       minHeight: '100vh', background: `linear-gradient(160deg, ${C.bg1} 0%, ${C.bg2} 100%)`,

@@ -47,7 +47,12 @@ const update = async (req, res) => {
     const branch = await Branch.findByPk(req.params.id);
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
-    await branch.update(req.body);
+    const allowed = ['name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time'];
+    const updates = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    await branch.update(updates);
     return res.json(branch);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

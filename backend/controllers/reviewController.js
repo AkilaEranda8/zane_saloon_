@@ -62,6 +62,9 @@ const submitReview = async (req, res) => {
       review_token:   payment.review_token,
     });
 
+    // Invalidate the one-time review token so it cannot be reused
+    await payment.update({ review_token: null });
+
     return res.status(201).json({ message: 'Thank you for your review!', review });
   } catch (err) {
     console.error(err);

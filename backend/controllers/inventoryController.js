@@ -62,7 +62,12 @@ const update = async (req, res) => {
     const item = await Inventory.findByPk(req.params.id);
     if (!item) return res.status(404).json({ message: 'Inventory item not found.' });
 
-    await item.update(req.body);
+    const allowed = ['name', 'category', 'quantity', 'unit', 'min_quantity', 'cost_price', 'supplier', 'notes'];
+    const updates = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    await item.update(updates);
     return res.json(item);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

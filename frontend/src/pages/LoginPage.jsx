@@ -16,13 +16,6 @@ const P = {
   white:   '#ffffff',
 };
 
-const DEMO_ACCOUNTS = [
-  { label: 'Super Admin', username: 'superadmin', password: 'admin123', icon: '👑' },
-  { label: 'Admin',       username: 'admin',      password: 'admin123', icon: '🛡' },
-  { label: 'Manager',     username: 'manager1',   password: 'manager123', icon: '📋' },
-  { label: 'Staff',       username: 'staff1',     password: 'staff123',   icon: '✂️' },
-];
-
 /* ── Keyframes ── */
 const ANIMS = `
 @keyframes fadeUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
@@ -219,48 +212,6 @@ export default function LoginPage() {
               ) : 'Sign In'}
             </button>
           </form>
-        </div>
-
-        {/* ── Demo Accounts ── */}
-        <div style={{
-          marginTop: 18, padding: '18px 20px', borderRadius: 18,
-          background: P.card, border: `1px solid ${P.border}`,
-          animation: mounted ? 'fadeUp .7s ease-out .15s both' : 'none',
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: P.muted,
-            textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12,
-          }}>
-            Quick Access
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {DEMO_ACCOUNTS.map((a) => (
-              <button key={a.username} type="button"
-                onClick={() => { setForm({ username: a.username, password: a.password }); setError(''); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 14px', borderRadius: 12,
-                  background: P.surface, border: `1px solid ${P.border}`,
-                  color: P.text, cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'all .2s', textAlign: 'left',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = P.gold + '55';
-                  e.currentTarget.style.background = P.border;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = P.border;
-                  e.currentTarget.style.background = P.surface;
-                }}
-              >
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{a.icon}</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{a.label}</div>
-                  <div style={{ fontSize: 11, color: P.muted, marginTop: 1 }}>{a.username}</div>
-                </div>
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* ── Footer ── */}
