@@ -24,6 +24,38 @@ const ACTIVE_PILL   = '#1e293b';
 /*  Helpers  */
 const fmtTime = (t) => { if (!t) return ''; const [h, m] = t.split(':'); const hr = +h % 12 || 12; return `${hr}:${m} ${+h >= 12 ? 'PM' : 'AM'}`; };
 
+function EntryServices({ entry, svc, services, MUTED }) {
+  const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
+  const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
+  const extraSvcs  = services.filter((s) => extraIds.includes(s.id) && s.id !== svc.id);
+  const allSvcs    = svc.name ? [svc, ...extraSvcs] : extraSvcs;
+  const cleanNote  = entry.note?.replace(/\[services:[\d,]+\]\s*/g, '').trim();
+  const totalMin   = allSvcs.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  return (
+    <>
+      {allSvcs.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+          {allSvcs.map((s) => (
+            <span key={s.id} style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 99,
+              background: '#EEF2FF', color: '#4338CA', fontWeight: 600,
+              border: '1px solid #C7D2FE',
+            }}>{s.name}</span>
+          ))}
+          {totalMin > 0 && (
+            <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
+              {totalMin} min
+            </span>
+          )}
+        </div>
+      )}
+      {cleanNote && (
+        <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{cleanNote}</div>
+      )}
+    </>
+  );
+}
+
 /*  Print CSS injected once  */
 const PRINT_CSS = `@media print { body > *:not(#walkin-print-root) { display: none !important; } #walkin-print-root { display: block !important; } }`;
 
@@ -388,37 +420,7 @@ export default function WalkInPage() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
                   {entry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{entry.phone}</div>}
                   {/* Services — primary + extras from note */}
-                  {(() => {
-                    const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
-                    const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
-                    const extraSvcs  = services.filter((s) => extraIds.includes(s.id) && s.id !== svc.id);
-                    const allSvcs    = svc.name ? [svc, ...extraSvcs] : extraSvcs;
-                    const cleanNote  = entry.note?.replace(/\[services:[\d,]+\]\s*/g, '').trim();
-                    const totalMin   = allSvcs.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
-                    return (
-                      <>
-                        {allSvcs.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                            {allSvcs.map((s) => (
-                              <span key={s.id} style={{
-                                fontSize: 11, padding: '2px 8px', borderRadius: 99,
-                                background: '#EEF2FF', color: '#4338CA', fontWeight: 600,
-                                border: '1px solid #C7D2FE',
-                              }}>{s.name}</span>
-                            ))}
-                            {totalMin > 0 && (
-                              <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
-                                {totalMin} min
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {cleanNote && (
-                          <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{cleanNote}</div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <EntryServices entry={entry} svc={svc} services={services} MUTED={MUTED} />
                 </div>
 
                 {/* STAFF */}
