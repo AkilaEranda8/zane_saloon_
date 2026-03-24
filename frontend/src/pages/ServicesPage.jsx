@@ -33,6 +33,7 @@ export default function ServicesPage() {
   const [formErr, setFormErr]   = useState('');
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [deleteId, setDeleteId] = useState(null);
   // Build dynamic categories list from defaults + any custom ones from existing services
   const CATS = [...new Set([...DEFAULT_CATS, ...allSvcs.map(s => s.category).filter(Boolean)])];
 
@@ -68,10 +69,11 @@ export default function ServicesPage() {
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
-  const handleDelete = async id => {
-    if (!window.confirm('Delete this service?')) return;
+  const handleDelete = async () => {
+    if (!deleteId) return;
     try {
-      await api.delete(`/services/${id}`);
+      await api.delete(`/services/${deleteId}`);
+      setDeleteId(null);
       load();
     } catch (e) {
       window.alert(e.response?.data?.message || 'Delete failed');
@@ -131,7 +133,7 @@ export default function ServicesPage() {
         <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
           <ActionBtn onClick={() => openView(row)} title="View" color="#2563EB"><IconEye /></ActionBtn>
           {canEdit && <ActionBtn onClick={() => openEdit(row)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
-          {canEdit && <ActionBtn onClick={() => handleDelete(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
+          {canEdit && <ActionBtn onClick={() => setDeleteId(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
       ),
     },
@@ -234,6 +236,24 @@ export default function ServicesPage() {
             {canEdit && <div style={{ marginTop: 16 }}><Button variant="primary" onClick={() => { setShowView(false); openEdit(viewItem); }}>Edit Service</Button></div>}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        title="Delete Service"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setDeleteId(null)}>No</Button>
+            <Button variant="danger" onClick={handleDelete} style={{ background:'#DC2626', color:'#fff' }}>Yes, Delete</Button>
+          </>
+        )}
+      >
+        <div style={{ textAlign:'center', padding:'10px 0' }}>
+          <div style={{ fontSize:15, fontWeight:600, color:'#101828', marginBottom:6 }}>Are you sure?</div>
+          <div style={{ fontSize:13, color:'#667085' }}>This service will be deleted permanently.</div>
+        </div>
       </Modal>
     </PageWrapper>
   );
