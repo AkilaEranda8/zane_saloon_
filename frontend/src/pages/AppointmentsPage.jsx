@@ -297,7 +297,9 @@ export default function AppointmentsPage() {
     const ids = [primaryId, ...extraIds].filter(Boolean);
     setPaymentServices(ids);
     const total = calcServiceTotal(ids);
-    setPaymentAmt(total > 0 ? total : (row.amount || ''));
+    // Prefer the appointment's saved amount (source of truth), fallback to live service totals.
+    const apptAmount = Number(row.amount || 0);
+    setPaymentAmt(apptAmount > 0 ? apptAmount : (total > 0 ? total : ''));
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);

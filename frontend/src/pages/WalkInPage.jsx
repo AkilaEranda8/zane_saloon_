@@ -193,15 +193,16 @@ export default function WalkInPage() {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
   };
 
-  /*  Open payment modal — pre-fill total from service prices  */
+  /*  Open payment modal — prefer saved amount, fallback to live service prices  */
   const openPayment = (entry) => {
     const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
     const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
     const allIds     = [...new Set([entry.service_id, ...extraIds].filter(Boolean))];
     const allSvcs    = services.filter((s) => allIds.includes(s.id));
     const total      = allSvcs.reduce((sum, s) => sum + parseFloat(s.price || 0), 0);
+    const savedAmt   = Number(entry.amount || 0);
     setPayEntry({ ...entry, _allSvcs: allSvcs });
-    setPayAmount(total > 0 ? String(total) : '');
+    setPayAmount(savedAmt > 0 ? String(savedAmt) : (total > 0 ? String(total) : ''));
     setPayMethod('Cash');
     setPayNote('');
     setPayError('');
