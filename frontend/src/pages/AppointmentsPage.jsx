@@ -290,8 +290,11 @@ export default function AppointmentsPage() {
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = (row) => {
     setPaymentAppt(row);
-    const svcId = Number(row.service_id || row.service?.id);
-    const ids = svcId ? [svcId] : [];
+    const primaryId = Number(row.service_id || row.service?.id);
+    const extraIds = Array.isArray(row.additional_service_ids)
+      ? row.additional_service_ids.map(Number).filter(Boolean)
+      : [];
+    const ids = [primaryId, ...extraIds].filter(Boolean);
     setPaymentServices(ids);
     const total = calcServiceTotal(ids);
     setPaymentAmt(total > 0 ? total : (row.amount || ''));
