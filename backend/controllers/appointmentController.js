@@ -127,14 +127,17 @@ const create = async (req, res) => {
     const safeBranchId   = Number(branch_id);
     const safeServiceId  = Number(service_id);
 
-    // Auto-fetch service price if amount not provided
-    let finalAmount = (amount !== undefined && amount !== '') ? Number(amount) : null;
-    if (finalAmount === null && safeServiceId) {
-      const svc = await Service.findByPk(safeServiceId, { attributes: ['price'] });
-      if (svc) finalAmount = Number(svc.price);
-    }
-
     const extraSvcIds = Array.isArray(additional_service_ids) ? additional_service_ids.map(Number).filter(Boolean) : [];
+
+    // Use provided amount, or calculate from all selected services
+    let finalAmount = (amount !== undefined && amount !== '') ? Number(amount) : null;
+    if (finalAmount === null) {
+      const allSvcIds = [safeServiceId, ...extraSvcIds].filter(Boolean);
+      if (allSvcIds.length) {
+        const svcs = await Service.findAll({ where: { id: allSvcIds }, attributes: ['price'] });
+        finalAmount = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
+      }
+    }
     const appt = await Appointment.create({
       branch_id:   safeBranchId,
       customer_id: safeCustomerId,
@@ -190,8 +193,8 @@ const update = async (req, res) => {
         : [];
     }
 
-    // Auto-update amount from all service prices when services change
-    if (updates.service_id || updates.additional_service_ids !== undefined) {
+    // Auto-calculate amount from service prices only when services change AND amount was not explicitly provided
+    if ((updates.service_id || updates.additional_service_ids !== undefined) && updates.amount === undefined) {
       const primaryId  = updates.service_id || appt.service_id;
       const extraIds   = updates.additional_service_ids ?? (appt.additional_service_ids || []);
       const allIds     = [primaryId, ...extraIds].filter(Boolean);
