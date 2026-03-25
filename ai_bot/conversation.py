@@ -33,10 +33,17 @@ class BookingDraft:
     phone:       Optional[str]   = None
 
 
+MAX_HISTORY = 12   # keep last N message pairs in memory
+
+
 @dataclass
 class ConversationState:
     state: str = IDLE
     draft: BookingDraft = field(default_factory=BookingDraft)
+    # Conversation history: list of {"role": "user"|"bot", "text": str}
+    history: list = field(default_factory=list)
+    # Last detected intent (for context-aware re-scoring)
+    last_intent: str = ""
     # Cached data fetched from API
     services:  list = field(default_factory=list)
     staff:     list = field(default_factory=list)
@@ -55,6 +62,25 @@ def get_session(session_id: str) -> ConversationState:
 
 def reset_session(session_id: str):
     _sessions[session_id] = ConversationState()
+
+
+def add_to_history(session_id: str, role: str, text: str):
+    sess = get_session(session_id)
+    sess.history.append({"role": role, "text": text})
+    # Trim to max history
+    if len(sess.history) > MAX_HISTORY * 2:
+        sess.history = sess.history[-(MAX_HISTORY * 2):]
+
+
+def get_history_summary(sess: ConversationState) -> str:
+    """Return last few exchanges as readable context."""
+    if not sess.history:
+        return ""
+    lines = []
+    for h in sess.history[-6:]:
+        prefix = "You" if h["role"] == "user" else "Bot"
+        lines.append(f"{prefix}: {h['text'][:80]}")
+    return "\n".join(lines)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,25 +211,32 @@ async def handle_management(intent: str, token: str) -> str | None:
     if intent == "today_appointments":
         appts = await salon_api.get_today_appointments(token)
         if not appts:
-            return f"No appointments scheduled for today ({today_str})."
+            return (
+                f"No appointments scheduled for today ({today_str}).\n\n"
+                "📌 Tip: Check **pending bookings** — some may need confirmation."
+            )
         by_status: dict = {}
         for a in appts:
             s = a.get("status", "unknown")
             by_status[s] = by_status.get(s, 0) + 1
         lines = [f"**Today's Appointments ({today_str})** — {len(appts)} total\n"]
-        for status, count in by_status.items():
-            icon = {"confirmed":"✅","pending":"⏳","completed":"💰","cancelled":"❌"}.get(status,"•")
+        for status, count in sorted(by_status.items()):
+            icon = {"confirmed": "✅", "pending": "⏳", "completed": "💰", "cancelled": "❌"}.get(status, "•")
             lines.append(f"{icon} {status.capitalize()}: **{count}**")
-        # List next 5
-        upcoming = [a for a in appts if a.get("status") in ("confirmed","pending")][:5]
+        # List next 5 upcoming
+        upcoming = [a for a in appts if a.get("status") in ("confirmed", "pending")][:5]
         if upcoming:
             lines.append("\n**Upcoming:**")
             for a in upcoming:
-                t = (a.get("time") or "")[:5]
-                cust = a.get("customer_name", "Customer")
-                svc  = a.get("service", {}).get("name", "") if isinstance(a.get("service"), dict) else ""
+                t     = (a.get("time") or "")[:5]
+                cust  = a.get("customer_name", "Customer")
+                svc   = a.get("service", {}).get("name", "") if isinstance(a.get("service"), dict) else ""
                 staff = a.get("staff", {}).get("name", "") if isinstance(a.get("staff"), dict) else ""
-                lines.append(f"• {t} — {cust} ({svc}) with {staff}")
+                lines.append(f"• {t} — **{cust}** ({svc}) with {staff}")
+        pending_count = by_status.get("pending", 0)
+        if pending_count > 0:
+            lines.append(f"\n⚠️ {pending_count} appointment(s) still **pending** — confirm them!")
+        lines.append("\nSay **today revenue** to see earnings.")
         return "\n".join(lines)
 
     # ── Pending appointments ─────────────────────────────────────────────
@@ -227,19 +260,27 @@ async def handle_management(intent: str, token: str) -> str | None:
     if intent == "today_revenue":
         payments = await salon_api.get_today_payments(token)
         if not payments:
-            return f"No payments recorded for today ({today_str}) yet."
-        total   = sum(float(p.get("total_amount", 0)) for p in payments)
-        cash    = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "cash")
-        card    = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "card")
-        comm    = sum(float(p.get("commission_amount", 0)) for p in payments)
-        lines   = [
+            return (
+                f"No payments recorded for today ({today_str}) yet.\n\n"
+                "📌 Check if appointments have been marked as **completed**."
+            )
+        total = sum(float(p.get("total_amount", 0)) for p in payments)
+        cash  = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "cash")
+        card  = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "card")
+        other = total - cash - card
+        comm  = sum(float(p.get("commission_amount", 0)) for p in payments)
+        avg   = total / len(payments) if payments else 0
+        lines = [
             f"**Today's Revenue ({today_str})**\n",
-            f"💰 Total:      **Rs. {total:,.0f}**",
-            f"🧾 Transactions: **{len(payments)}**",
-            f"💵 Cash:       Rs. {cash:,.0f}",
-            f"💳 Card:       Rs. {card:,.0f}",
-            f"🤝 Commission: Rs. {comm:,.0f}",
+            f"💰 **Total:      Rs. {total:,.0f}**",
+            f"🧾 Transactions: {len(payments)}  (avg Rs. {avg:,.0f} each)",
+            f"💵 Cash:         Rs. {cash:,.0f}",
+            f"💳 Card:         Rs. {card:,.0f}",
         ]
+        if other > 0:
+            lines.append(f"🔄 Other:         Rs. {other:,.0f}")
+        lines.append(f"🤝 Commission:   Rs. {comm:,.0f}")
+        lines.append("\nSay **staff performance** to see who earned the most!")
         return "\n".join(lines)
 
     # ── Recent payments ──────────────────────────────────────────────────
@@ -277,14 +318,20 @@ async def handle_management(intent: str, token: str) -> str | None:
     if intent == "low_inventory":
         items = await salon_api.get_low_stock(token)
         if not items:
-            return "All inventory levels are fine! No low stock alerts."
-        lines = [f"**Low Stock Alert** — {len(items)} items need restocking\n"]
+            return "✅ All inventory levels are fine! No low stock alerts right now."
+        lines = [f"**⚠️ Low Stock Alert** — {len(items)} item(s) need restocking\n"]
         for item in items[:10]:
-            name = item.get("name", "Item")
-            qty  = item.get("quantity", 0)
-            unit = item.get("unit", "")
-            lines.append(f"⚠️ **{name}** — only {qty} {unit} left")
-        lines.append("\nGo to **Inventory** page to restock.")
+            name  = item.get("name", "Item")
+            qty   = item.get("quantity", 0)
+            unit  = item.get("unit", "")
+            min_q = item.get("min_quantity", item.get("minQuantity", ""))
+            line  = f"• **{name}** — {qty} {unit} left"
+            if min_q:
+                line += f" (min: {min_q})"
+            lines.append(line)
+        if len(items) > 10:
+            lines.append(f"  ...and {len(items)-10} more items")
+        lines.append("\n📦 Go to **Inventory** page to restock these items.")
         return "\n".join(lines)
 
     # ── Walk-in queue ─────────────────────────────────────────────────────
@@ -305,8 +352,8 @@ async def handle_management(intent: str, token: str) -> str | None:
 
     # ── Customer stats ────────────────────────────────────────────────────
     if intent == "customer_stats":
-        data = await salon_api.get_customer_count(token)
-        total = data.get("total", 0)
+        data  = await salon_api.get_customer_count(token)
+        total = data.get("total", data.get("count", 0))
         dash  = await salon_api.get_dashboard(token)
         new_this_month = dash.get("newCustomersMonth", dash.get("new_customers_month", 0))
         lines = [
@@ -321,101 +368,194 @@ async def handle_management(intent: str, token: str) -> str | None:
     return None   # Not a management intent
 
 
-async def handle_message(session_id: str, text: str, intent: str, token: str | None = None) -> str:
+async def handle_message(
+    session_id: str,
+    text: str,
+    intent: str,
+    token: str | None = None,
+    needs_clarify: bool = False,
+) -> str:
     sess = get_session(session_id)
+
+    # Record user message in history
+    add_to_history(session_id, "user", text)
+    prev_intent = sess.last_intent
+    sess.last_intent = intent
+
+    # ── Low confidence: ask clarifying question ───────────────────────────────
+    if needs_clarify and sess.state == IDLE:
+        reply = _clarify_response(text, prev_intent)
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     # ── Management queries (authenticated) ────────────────────────────────────
     if token and sess.state == IDLE:
         mgmt_reply = await handle_management(intent, token)
         if mgmt_reply is not None:
+            add_to_history(session_id, "bot", mgmt_reply)
             return mgmt_reply
 
     # ── Always-available commands ─────────────────────────────────────────────
     if intent == "goodbye":
         reset_session(session_id)
-        return "Thank you for visiting Zane Salon! See you soon 😊"
+        reply = "Thank you for visiting Zane Salon! See you soon 😊"
+        return reply
 
     if intent == "help":
-        return (
-            "I can help you with:\n"
-            "• **Book an appointment** — just say \"book\"\n"
-            "• **Services & prices** — say \"show services\"\n"
-            "• **Branch locations** — say \"where are you\"\n"
-            "• **Our staff** — say \"show staff\"\n"
-            "• **Check availability** — say \"check availability\"\n\n"
-            "How can I help you today?"
-        )
+        reply = _help_message(token)
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     # ── Booking state machine ─────────────────────────────────────────────────
     if sess.state != IDLE:
-        return await _handle_booking_flow(session_id, sess, text, intent)
+        reply = await _handle_booking_flow(session_id, sess, text, intent)
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     # ── Intents from idle state ───────────────────────────────────────────────
     if intent == "greet":
-        return (
-            "Hello! Welcome to **Zane Salon** 💇\n\n"
-            "I can help you:\n"
-            "• Book an appointment\n"
-            "• Check our services & prices\n"
-            "• Find our branches\n\n"
-            "What would you like to do?"
-        )
+        # Personalise based on history (returning user?)
+        if len(sess.history) > 2:
+            reply = "Welcome back! 👋 What else can I help you with?"
+        else:
+            reply = (
+                "Hello! Welcome to **Zane Salon** 💇\n\n"
+                "I can help you:\n"
+                "• 📅 Book an appointment\n"
+                "• 💅 Check our services & prices\n"
+                "• 📍 Find our branches\n"
+                "• 👤 View our stylists\n\n"
+                "What would you like to do?"
+            )
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "book_appointment":
         services = await salon_api.get_services()
         sess.services = services
         sess.state = AWAIT_SERVICE
-        return (
+        reply = (
             _format_services(services) +
             "\n\nWhich service would you like? "
             "(Type the number or service name)"
         )
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "check_services":
         services = await salon_api.get_services()
-        return _format_services(services) + "\n\nWould you like to book one? Just say **book**!"
+        reply = _format_services(services) + "\n\nWould you like to book one? Just say **book**!"
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "check_prices":
         services = await salon_api.get_services()
         lines = ["**Price List:**\n"]
         for s in services:
             lines.append(f"• {s['name']}: Rs. {s['price']}")
-        return "\n".join(lines) + "\n\nWant to book? Say **book**!"
+        reply = "\n".join(lines) + "\n\nWant to book? Say **book**!"
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "check_branches":
         branches = await salon_api.get_branches()
-        return _format_branches(branches)
+        reply = _format_branches(branches)
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "check_staff":
         staff = await salon_api.get_staff()
-        return _format_staff(staff) + "\n\nWant to book with a specific stylist? Say **book**!"
+        reply = _format_staff(staff) + "\n\nWant to book with a specific stylist? Say **book**!"
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "check_availability":
         staff = await salon_api.get_staff()
         sess.staff = staff
         sess.state = AWAIT_STAFF
         sess.draft = BookingDraft()
-        return (
+        reply = (
             _format_staff(staff) +
             "\n\nWhich staff member would you like to check? "
             "(Type number or name)"
         )
+        add_to_history(session_id, "bot", reply)
+        return reply
 
     if intent == "cancel_appointment":
-        return (
+        reply = (
             "To cancel an appointment, please contact us directly:\n"
             "📞 Call or visit your nearest branch.\n\n"
             "Would you like to book a new appointment instead?"
         )
+        add_to_history(session_id, "bot", reply)
+        return reply
 
-    # Fallback
+    # ── Context-aware fallback: use previous intent to guide ─────────────────
+    reply = _smart_fallback(text, prev_intent, bool(token))
+    add_to_history(session_id, "bot", reply)
+    return reply
+
+
+def _clarify_response(text: str, prev_intent: str) -> str:
+    """Low-confidence reply that guides user back on track."""
+    base = f"I'm not quite sure what you mean by \"*{text[:40]}*\". "
+    if prev_intent in ("book_appointment", "check_services", "check_prices"):
+        return base + "Were you asking about **booking** or **services**? Try saying:\n• \"book appointment\"\n• \"show services\"\n• \"price list\""
+    if prev_intent in ("today_appointments", "pending_appointments", "today_revenue"):
+        return base + "Were you asking about **today's data**? Try:\n• \"today appointments\"\n• \"today revenue\"\n• \"pending bookings\""
+    return base + "Try saying:\n• **book** — for an appointment\n• **services** — to see what we offer\n• **help** — for all options"
+
+
+def _smart_fallback(text: str, prev_intent: str, is_staff: bool) -> str:
+    """Smarter fallback using conversation context."""
+    # Try to detect key words for helpful suggestions
+    t = text.lower()
+    if any(w in t for w in ["appoint", "book", "slot", "time"]):
+        return "It looks like you want to **book an appointment**. Just say **book** and I'll guide you through it! 📅"
+    if any(w in t for w in ["price", "cost", "much", "charge", "gana", "kiyada"]):
+        return "Looking for **prices**? Say **price list** and I'll show you all our service charges! 💰"
+    if any(w in t for w in ["where", "location", "branch", "address"]):
+        return "Looking for our **locations**? Say **branches** and I'll show you all our salon branches! 📍"
+    if is_staff and any(w in t for w in ["revenue", "today", "appointment", "staff", "payment", "stock"]):
+        return "I'm not sure which **management data** you need. Try:\n• \"today appointments\"\n• \"today revenue\"\n• \"pending bookings\"\n• \"staff performance\"\n• \"low stock\""
     return (
-        "I'm not sure I understood that. I can help with:\n"
-        "• Booking an appointment — say **book**\n"
-        "• Services & prices — say **services**\n"
-        "• Our locations — say **branches**\n\n"
-        "How can I help?"
+        "I didn't quite catch that. I can help with:\n"
+        "• 📅 **book** — Book an appointment\n"
+        "• 💅 **services** — See all services & prices\n"
+        "• 📍 **branches** — Find our locations\n"
+        "• ❓ **help** — See everything I can do\n\n"
+        "What would you like?"
     )
+
+
+def _help_message(token: str | None) -> str:
+    lines = [
+        "Here's what I can do for you:\n",
+        "**Appointments**",
+        "• Say **book** to start a new booking",
+        "• Say **cancel** to cancel an appointment\n",
+        "**Information**",
+        "• **services** — see all services",
+        "• **price list** — see all prices",
+        "• **branches** — find our locations",
+        "• **staff** — meet our stylists",
+        "• **availability** — check free slots\n",
+    ]
+    if token:
+        lines += [
+            "**Management (Staff)**",
+            "• **today appointments** — today's schedule",
+            "• **pending bookings** — unconfirmed appointments",
+            "• **today revenue** — today's earnings",
+            "• **staff performance** — team stats",
+            "• **low stock** — inventory alerts",
+            "• **walk-in queue** — current waiting list",
+            "• **customer stats** — total customers",
+            "• **recent payments** — latest transactions\n",
+        ]
+    lines.append("How can I help?")
+    return "\n".join(lines)
 
 
 async def _handle_booking_flow(

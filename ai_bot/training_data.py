@@ -1,14 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Salon-specific training phrases for intent classification
-# Add more phrases to improve accuracy
+# Salon AI — training phrases (English + Sinhala Romanized + Natural speech)
+# More phrases = better accuracy. Add freely.
 # ─────────────────────────────────────────────────────────────────────────────
 
 TRAINING_DATA = {
+
     "greet": [
         "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
         "hi there", "hello there", "ayubowan", "kohomada", "hello bot",
         "hai", "hii", "heyyy", "yo", "sup", "whats up", "what's up",
-        "oba kohomada", "machan", "bro", "hola",
+        "oba kohomada", "machan", "bro", "hola", "greetings",
+        "howdy", "what's good", "hey there", "good day", "morning",
+        "evening", "afternoon", "hi bot", "hello zane", "hi zane",
+        "start", "begin", "hey ai", "hi ai",
     ],
 
     "book_appointment": [
@@ -21,6 +25,15 @@ TRAINING_DATA = {
         "make a reservation", "i want a haircut appointment",
         "appointment ganna", "appoint onei", "book one for me",
         "i want to come in", "want to visit", "coming in for service",
+        "book me in", "can i get an appointment", "slot book karanna",
+        "api ennam", "ennam", "apu ennam salon ekata",
+        "appointment ekak ganna puluwanda", "booking ekak hadanna",
+        "i need to come in", "reserve", "fix an appointment",
+        "slot ekak ganna", "time ekak ganna", "time fix karanna",
+        "appointment danna", "appointment dapan", "book karala danna",
+        "haircut book", "facial book", "massage book", "book treatment",
+        "want appointment", "need appointment", "appointment please",
+        "can i schedule", "i want to see", "i want to visit",
     ],
 
     "check_services": [
@@ -31,6 +44,13 @@ TRAINING_DATA = {
         "tell me about services", "services danna", "what are your services",
         "what treatments do you have", "show me what you offer",
         "services show karanna", "service list eka denna",
+        "what do you do", "treatment list", "service menu",
+        "monawada thiyanawa", "sewa monawada", "services culist",
+        "all services", "full service list", "what can i book",
+        "what type of services", "services available",
+        "haircut service thiyenawada", "facial service thiyenawada",
+        "monawada services", "service details", "service info",
+        "describe your services", "service catalogue",
     ],
 
     "check_prices": [
@@ -40,7 +60,14 @@ TRAINING_DATA = {
         "how much for", "what does it cost", "how much is a",
         "price list", "price chart", "rate card", "service charges",
         "how much is haircut", "facial price", "how much is coloring",
-        "eka kiyadha", "gana mokakda",
+        "eka kiyadha", "gana mokakda", "rates", "fees",
+        "how much do you charge", "pricing list", "cost of services",
+        "how expensive", "affordable", "cheap", "expensive",
+        "pricelist", "tariff", "hakata", "money", "rupees",
+        "rs kiyada", "kiyada gana", "gana balanna", "gana danna",
+        "how much does haircut cost", "massage gana kiyada",
+        "price wada", "price ekata balamu", "service gana",
+        "service prices", "all prices", "full price list",
     ],
 
     "check_availability": [
@@ -51,6 +78,12 @@ TRAINING_DATA = {
         "can i come tomorrow", "time slot", "opening available",
         "check slot", "available appointment", "free time",
         "koheda free", "koheda available", "opening innawada",
+        "availability check", "when are you free", "openings",
+        "do you have space", "is there room", "any availability",
+        "free slot thiyenawada", "time available",
+        "tomorrow free nisa", "saturday available nisa",
+        "when can i get in", "earliest available",
+        "next available slot", "open slots",
     ],
 
     "check_branches": [
@@ -60,6 +93,12 @@ TRAINING_DATA = {
         "koheda inne", "address danna", "location danna",
         "how many branches", "branch list", "where to find",
         "directions", "how to get there", "map",
+        "nearest branch", "closest location", "near me",
+        "where is zane salon", "zane salon koheda",
+        "branches thiyanawa", "locations", "outlets",
+        "salon address", "where to go", "how to visit",
+        "salon innawa koheda", "branch eka koheda",
+        "find nearest", "locate branch", "branch details",
     ],
 
     "check_staff": [
@@ -69,6 +108,14 @@ TRAINING_DATA = {
         "staff thiyanawada", "stylist innawada", "who is working",
         "recommended staff", "best stylist", "who should i book",
         "staff danna", "people working", "team",
+        "who is the best", "good hairdresser", "expert stylist",
+        "skilled staff", "experienced stylist",
+        "staff members", "beauticians", "therapists",
+        "who is on duty", "staff on duty", "barber",
+        "hairstylist", "beauty therapist",
+        "staff show karanna", "team members",
+        "staff info", "about staff", "stylists list",
+        "kenekuta book karanna", "which stylist",
     ],
 
     "cancel_appointment": [
@@ -77,16 +124,25 @@ TRAINING_DATA = {
         "appointment cancel karanna", "cancel karanna", "nothung",
         "i need to cancel", "please cancel", "cancel it",
         "don't want appointment", "cancel the booking",
+        "reschedule", "change appointment", "move appointment",
+        "appointment change karanna", "different time", "postpone",
+        "cancel my reservation", "remove booking",
     ],
 
-    # ── Management / Internal queries ────────────────────────────────────
+    # ── Management intents ────────────────────────────────────────────────
     "today_appointments": [
         "how many appointments today", "today appointments", "today schedule",
         "appointments today", "today's bookings", "how many bookings today",
-        "adura vela appointments", "ada appointments", "ada bookings",
+        "ada appointments", "ada bookings", "ada schedule",
         "what appointments do we have today", "show today appointments",
-        "ada schedule eka", "today's agenda", "appointments list today",
-        "how busy are we today", "today appointment count",
+        "today appointment count", "how busy are we today",
+        "todays appointments", "schedule for today",
+        "ada kiyada appointments", "ada kiyada bookings",
+        "ada hama appointments", "appointments list",
+        "show me today", "today's agenda", "daily schedule",
+        "who is coming today", "customers today",
+        "ada enna ona minissu", "ada apu kiyada", "ada schedule eka",
+        "today's list", "appointment list today", "today check",
     ],
 
     "pending_appointments": [
@@ -94,6 +150,12 @@ TRAINING_DATA = {
         "how many pending", "show pending", "not confirmed appointments",
         "waiting appointments", "approval pending", "pending list",
         "confirm karana na appointments", "pending ona",
+        "which appointments are pending", "unconfirmed",
+        "not yet confirmed", "need to confirm", "confirm karanna tiyena",
+        "pending bookings list", "appointments to confirm",
+        "confirm karanna balanawa", "unverified bookings",
+        "outstanding appointments", "pending count",
+        "kiyada pending", "confirm karanna ona",
     ],
 
     "today_revenue": [
@@ -102,6 +164,12 @@ TRAINING_DATA = {
         "ada revenue", "ada income", "ada earnings", "ada sales",
         "how much did we make today", "daily revenue", "today total",
         "today payment total", "today collection",
+        "ada kiyada income", "ada kiyada wada una",
+        "today's takings", "daily takings", "today's profit",
+        "money earned today", "how much collected today",
+        "revenue for today", "today's figures", "today turnover",
+        "ada laba", "ada income kiyada", "today money",
+        "how much money today", "ada total ekak kiyada",
     ],
 
     "staff_stats": [
@@ -110,6 +178,14 @@ TRAINING_DATA = {
         "who performed best", "top performing staff",
         "staff ranking", "staff revenue", "which staff is best",
         "staff veda", "staff performance report",
+        "who did the most work", "hardest working staff",
+        "staff leaderboard", "staff productivity",
+        "best employee", "top employee", "who earned most",
+        "who did most appointments", "staff summary",
+        "employee performance", "staff monthly report",
+        "staff this month", "best this month",
+        "kaurutha best", "staff list with performance",
+        "staff contribution", "team performance",
     ],
 
     "low_inventory": [
@@ -118,6 +194,12 @@ TRAINING_DATA = {
         "stock check", "what needs restocking", "low items",
         "stock thibena dewal", "stock nathi", "inventory low",
         "what products are running out", "reorder needed",
+        "stock status", "inventory status", "check inventory",
+        "what's running out", "products low", "supplies low",
+        "inventory check", "what to reorder",
+        "stock nearly empty", "almost out of",
+        "thibena stock", "stock eka balanna", "nathi wela",
+        "stocking needed", "supply alert",
     ],
 
     "walkin_status": [
@@ -126,6 +208,12 @@ TRAINING_DATA = {
         "who is waiting", "walk in today", "walk-in list",
         "ada walk in", "queue eka kohomada", "walkin status",
         "how many people waiting", "queue length",
+        "waiting list", "who is in queue", "current wait",
+        "people waiting", "walk-ins today",
+        "ada walked in kiyada", "queue check",
+        "waiting customers", "how long is queue",
+        "walk ins now", "walkin today count",
+        "queue ekak thiyenawada", "minissu innawa kiyada",
     ],
 
     "customer_stats": [
@@ -134,6 +222,12 @@ TRAINING_DATA = {
         "customers this month", "customer total",
         "customers thiyanawa", "customer gana", "how many clients",
         "total clients", "customer database",
+        "customer base", "how many people", "client count",
+        "registered customers", "customer list",
+        "new registrations", "new clients this month",
+        "customer growth", "total registered",
+        "ada customers kiyada", "monthly customers",
+        "active customers", "loyal customers",
     ],
 
     "recent_payments": [
@@ -142,6 +236,11 @@ TRAINING_DATA = {
         "show payments", "recent sales", "latest transactions",
         "ada payments", "recent bills", "payment history",
         "last few payments", "what was paid today",
+        "transactions today", "today's transactions",
+        "who paid today", "payment records",
+        "recent collections", "last payments received",
+        "ada pay kala minissu", "payment summary today",
+        "recent receipts", "today bills",
     ],
 
     "goodbye": [
@@ -150,6 +249,10 @@ TRAINING_DATA = {
         "ok done", "that's all", "nothing else", "thats it",
         "thank you", "thanks", "ok thank you", "cheers",
         "istuti", "bohoma istuti", "gihin ennam", "ok gihin ennam",
+        "have a good day", "farewell", "au revoir", "adios",
+        "ttyl", "talk later", "all good thanks", "all done",
+        "finished", "done for now", "that's everything",
+        "ok bye", "bye bye", "tata", "laters",
     ],
 
     "help": [
@@ -158,5 +261,12 @@ TRAINING_DATA = {
         "what to do", "options", "menu", "commands",
         "help karanna", "help eka denna", "explain",
         "how to use", "what can i ask", "what do you know",
+        "capabilities", "features", "what are you able to do",
+        "show me what you can do", "what questions can i ask",
+        "instructions", "guidance", "tutorial",
+        "how to chat", "bot help", "ai help",
+        "monawada kiyanna puluwang", "mokak karanna puluwang",
+        "what should i say", "what to type",
+        "available commands", "command list",
     ],
 }

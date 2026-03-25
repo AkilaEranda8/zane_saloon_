@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import uuid
 
 from intent_classifier import classifier
-from conversation import handle_message, reset_session
+from conversation import handle_message, reset_session, get_session
 from insights import analyze
 
 app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
@@ -56,11 +56,20 @@ async def chat(req: ChatRequest, request: Request):
             confidence=0.0,
         )
 
-    result     = classifier.predict(message)
-    intent     = result["intent"]
-    confidence = result["confidence"]
+    # Get previous intent for context-aware classification
+    sess = get_session(session_id)
+    prev_intent = sess.last_intent
 
-    reply = await handle_message(session_id, message, intent, token=token)
+    result        = classifier.predict(message, prev_intent=prev_intent)
+    intent        = result["intent"]
+    confidence    = result["confidence"]
+    needs_clarify = result["needs_clarify"]
+
+    reply = await handle_message(
+        session_id, message, intent,
+        token=token,
+        needs_clarify=needs_clarify,
+    )
 
     return ChatResponse(
         session_id=session_id,
@@ -74,6 +83,13 @@ async def chat(req: ChatRequest, request: Request):
 async def clear_session(session_id: str):
     reset_session(session_id)
     return {"message": "Session cleared"}
+
+
+@app.get("/chat/{session_id}/history")
+async def get_history(session_id: str):
+    """Return conversation history for a session."""
+    sess = get_session(session_id)
+    return {"session_id": session_id, "history": sess.history}
 
 
 @app.post("/insights")

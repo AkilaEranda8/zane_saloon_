@@ -66,8 +66,12 @@ function Message({ msg, isLast }) {
           <span key={i}>{renderMarkdown(line)}{i < msg.text.split('\n').length - 1 && <br/>}</span>
         ))}
         {msg.intent && isBot && (
-          <div style={{ marginTop: 6, fontSize: 10, opacity: 0.45, fontStyle: 'italic' }}>
-            intent: {msg.intent} · {(msg.confidence * 100).toFixed(0)}%
+          <div style={{
+            marginTop: 8, fontSize: 10, fontStyle: 'italic',
+            color: msg.confidence > 0.6 ? '#10B981' : msg.confidence > 0.35 ? '#F59E0B' : '#EF4444',
+            opacity: 0.7,
+          }}>
+            {msg.intent.replace(/_/g,' ')} · {(msg.confidence * 100).toFixed(0)}% confidence
           </div>
         )}
       </div>
@@ -93,15 +97,16 @@ function TypingIndicator() {
       }}>🤖</div>
       <div style={{
         background:'#fff', borderRadius:'4px 18px 18px 18px',
-        padding:'12px 16px', display:'flex', gap:5, alignItems:'center',
+        padding:'10px 16px', display:'flex', gap:6, alignItems:'center',
         border:'1px solid #F0F0F0', boxShadow:'0 2px 8px rgba(0,0,0,0.07)',
       }}>
         {[0,0.2,0.4].map((d,i) => (
           <div key={i} style={{
-            width:8, height:8, borderRadius:'50%', background:'#94A3B8',
+            width:8, height:8, borderRadius:'50%', background:'#7C3AED',
             animation:`dotBounce 1.2s ${d}s infinite`,
           }}/>
         ))}
+        <span style={{ fontSize:11, color:'#94A3B8', marginLeft:4 }}>thinking...</span>
       </div>
     </div>
   );
@@ -109,7 +114,7 @@ function TypingIndicator() {
 
 export default function AiChatPage() {
   const [messages, setMessages]     = useState([
-    { from:'bot', text:'Hello! Welcome to Zane Salon AI Assistant 💇\n\nI can help you with:\n• Book appointments\n• Check services & prices\n• Branch locations\n• Staff information\n\nHow can I help you today?' },
+    { from:'bot', text:'Hello! Welcome to **Zane Salon AI** 💇\n\nI understand natural language — just type what you need!\n\n• 📅 Book appointments\n• 💅 Services & prices\n• 📍 Branch locations\n• 📊 Today\'s schedule & revenue\n• 📦 Inventory alerts\n\nOr pick a quick option below 👇' },
   ]);
   const [input, setInput]           = useState('');
   const [loading, setLoading]       = useState(false);
