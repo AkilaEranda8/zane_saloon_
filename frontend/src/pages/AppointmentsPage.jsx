@@ -174,7 +174,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.time && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.time}</div>}
       </td>
       <td style={{ padding:'13px 16px', textAlign:'right' }}>
-        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.service?.price||row.amount||0).toLocaleString()}</span>
+        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.amount||row.service?.price||0).toLocaleString()}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
@@ -275,7 +275,7 @@ export default function AppointmentsPage() {
     const ids = svcId ? [svcId] : [];
     setPaymentServices(ids);
     const total = calcServiceTotal(ids);
-    setPaymentAmt(total > 0 ? total : (row.amount || ''));
+    setPaymentAmt(Number(row.amount || 0) > 0 ? row.amount : (total > 0 ? total : ''));
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
@@ -706,7 +706,7 @@ export default function AppointmentsPage() {
               { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
               { icon:'', label:'Time',    value:detailItem.time||'' },
               { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
-              { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.service?.price||detailItem.amount||0).toLocaleString()}`, highlight:true },
+              { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
             ].map(({icon,label,value,highlight})=>(
               <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
                 <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
