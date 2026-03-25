@@ -325,6 +325,10 @@ export default function AppointmentsPage() {
       .filter(Boolean)
       .map(Number);
     const selectedIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
+    const totalAmount = selectedIds.reduce((sum, id) => {
+      const s = services.find(x => Number(x.id) === Number(id));
+      return sum + Number(s?.price || 0);
+    }, 0);
     setEditItem(row);
     setForm({
       ...row,
@@ -332,6 +336,7 @@ export default function AppointmentsPage() {
       service_id: row.service?.id || row.service_id,
       staff_id: row.staff?.id || row.staff_id,
       date: row.date?.slice(0,10) || '',
+      amount: totalAmount || row.amount || '',
       notes: stripAdditionalServicesLine(row.notes || ''),
     });
     setApptServiceIds(selectedIds);
