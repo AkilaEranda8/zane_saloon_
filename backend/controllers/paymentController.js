@@ -226,12 +226,13 @@ const summary = async (req, res) => {
         [fn('SUM', col('commission_amount')), 'commission'],
         [fn('COUNT', col('id')),            'count'],
       ],
-      group: ['branch_id'],
+      group: ['Payment.branch_id', 'branch.id', 'branch.name', 'branch.color'],
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
     });
 
     return res.json(totals);
   } catch (err) {
+    console.error('Payment summary error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
