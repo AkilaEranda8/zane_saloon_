@@ -171,6 +171,39 @@ exports.assign = async (req, res) => {
   }
 };
 
+// ── PATCH /api/walkin/:id ─────────────────────────────────────────────────────
+exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customerName, phone, serviceId, note } = req.body;
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+
+    if (customerName != null && !String(customerName).trim()) {
+      return res.status(400).json({ message: 'customerName cannot be empty.' });
+    }
+
+    if (serviceId != null) {
+      const service = await Service.findByPk(serviceId);
+      if (!service) return res.status(404).json({ message: 'Service not found.' });
+      entry.service_id = Number(serviceId);
+    }
+
+    if (customerName != null) entry.customer_name = String(customerName).trim();
+    if (phone !== undefined) entry.phone = phone || null;
+    if (note !== undefined) entry.note = note || null;
+
+    await entry.save();
+    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    emitQueueUpdate(entry.branch_id, { action: 'update', entry: full });
+    res.json(full);
+  } catch (err) {
+    console.error('walkin.update error:', err);
+    res.status(500).json({ message: 'Failed to update walk-in entry.' });
+  }
+};
+
 // ── DELETE /api/walkin/:id ────────────────────────────────────────────────────
 exports.remove = async (req, res) => {
   try {

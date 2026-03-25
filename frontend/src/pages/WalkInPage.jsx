@@ -46,6 +46,15 @@ export default function WalkInPage() {
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
   const [clock,          setClock]          = useState(new Date());
+  const [paymentEntry,   setPaymentEntry]   = useState(null);
+  const [paymentMethod,  setPaymentMethod]  = useState('Cash');
+  const [paymentAmount,  setPaymentAmount]  = useState('');
+  const [paymentSaving,  setPaymentSaving]  = useState(false);
+  const [paymentError,   setPaymentError]   = useState('');
+  const [editEntry,      setEditEntry]      = useState(null);
+  const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
+  const [editSaving,     setEditSaving]     = useState(false);
+  const [editError,      setEditError]      = useState('');
 
   const [custSearch,     setCustSearch]     = useState('');
   const [custResults,    setCustResults]    = useState([]);
@@ -120,6 +129,73 @@ export default function WalkInPage() {
   };
   const removeEntry = async (id) => {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
+  };
+  const openPayment = (entry) => {
+    const baseAmount = Number(entry?.service?.price || 0);
+    setPaymentEntry(entry);
+    setPaymentMethod('Cash');
+    setPaymentAmount(baseAmount > 0 ? String(baseAmount) : '');
+    setPaymentError('');
+  };
+  const handleCollectPayment = async () => {
+    if (!paymentEntry) return;
+    if (!paymentAmount || Number(paymentAmount) <= 0) {
+      setPaymentError('Enter a valid amount.');
+      return;
+    }
+    setPaymentSaving(true);
+    setPaymentError('');
+    try {
+      await api.post('/payments', {
+        branch_id: paymentEntry.branch_id || selectedBranch,
+        staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
+        service_id: paymentEntry.service_id || paymentEntry.service?.id || null,
+        customer_name: paymentEntry.customer_name || 'Walk-in',
+        splits: [{ method: paymentMethod, amount: Number(paymentAmount) }],
+      });
+      if (paymentEntry.status !== 'completed') {
+        await api.patch(`/walkin/${paymentEntry.id}/status`, { status: 'completed' });
+      }
+      toast('Payment collected successfully.', 'success');
+      setPaymentEntry(null);
+    } catch (e) {
+      setPaymentError(e.response?.data?.message || 'Payment collection failed.');
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+  const openEdit = (entry) => {
+    setEditEntry(entry);
+    setEditForm({
+      customerName: entry.customer_name || '',
+      phone: entry.phone || '',
+      serviceId: entry.service_id || entry.service?.id || '',
+      note: entry.note || '',
+    });
+    setEditError('');
+  };
+  const handleEditSave = async () => {
+    if (!editEntry) return;
+    if (!editForm.customerName.trim() || !editForm.serviceId) {
+      setEditError('Customer name and service are required.');
+      return;
+    }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await api.patch(`/walkin/${editEntry.id}`, {
+        customerName: editForm.customerName.trim(),
+        phone: editForm.phone || '',
+        serviceId: Number(editForm.serviceId),
+        note: editForm.note || '',
+      });
+      toast('Walk-in entry updated.', 'success');
+      setEditEntry(null);
+    } catch (e) {
+      setEditError(e.response?.data?.message || 'Update failed.');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   /*  Check-in submit  */
@@ -365,11 +441,15 @@ export default function WalkInPage() {
 
                 {/* ACTIONS */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
                   {entry.status === 'waiting' && (
                     <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
                   )}
                   {entry.status === 'serving' && (
-                    <Button size="sm" onClick={() => changeStatus(entry.id, 'completed')}>Done</Button>
+                    <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
+                  )}
+                  {entry.status === 'completed' && (
+                    <Button size="sm" variant="ghost" onClick={() => openPayment(entry)}>Collect Payment</Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
@@ -582,6 +662,108 @@ export default function WalkInPage() {
           </div>
         </Modal>
       )}
+
+      {/*  PAYMENT MODAL  */}
+      <Modal open={!!paymentEntry} onClose={() => setPaymentEntry(null)} title="Collect Walk-in Payment" size="sm">
+        {paymentEntry && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {paymentError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+                {paymentError}
+              </div>
+            )}
+            <div style={{ background: '#F9FAFB', border: '1px solid #EAECF0', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{paymentEntry.customer_name || 'Walk-in'}</div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                {paymentEntry.service?.name || 'Service'}
+              </div>
+            </div>
+            <div>
+              <Label>Amount (Rs.) *</Label>
+              <Input
+                type="number"
+                min="0"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label>Payment Method *</Label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
+              >
+                {['Cash', 'Card', 'Bank Transfer', 'Online'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
+          <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0}>
+            Confirm Payment
+          </Button>
+        </div>
+      </Modal>
+
+      {/*  EDIT MODAL  */}
+      <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title="Edit Walk-in Entry" size="sm">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {editError && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+              {editError}
+            </div>
+          )}
+          <div>
+            <Label>Customer Name *</Label>
+            <Input
+              value={editForm.customerName}
+              onChange={(e) => setEditForm((f) => ({ ...f, customerName: e.target.value }))}
+              placeholder="Customer name"
+            />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input
+              value={editForm.phone}
+              onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+              placeholder="Optional"
+            />
+          </div>
+          <div>
+            <Label>Service *</Label>
+            <select
+              value={editForm.serviceId}
+              onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
+            >
+              <option value="">Select service</option>
+              {services.filter((s) => s.is_active !== false).map((s) => (
+                <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Notes</Label>
+            <Textarea
+              rows={2}
+              value={editForm.note}
+              onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+              placeholder="Optional notes"
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
+          <Button onClick={handleEditSave} loading={editSaving} disabled={editSaving || !editForm.customerName.trim() || !editForm.serviceId}>
+            Save Changes
+          </Button>
+        </div>
+      </Modal>
 
     </PageWrapper>
   );
