@@ -508,16 +508,16 @@ export default function WalkInPage() {
 
                 {/* STATUS + WAIT */}
                 <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'center' }}>
-                  <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
-                  {entry.status === 'waiting' && entry.estimated_wait != null && (
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
-                  )}
-                  {entry.status === 'completed' && (
-                    <div style={{ marginTop: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
+                    {entry.status === 'completed' && (
                       <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#ECFDF5', color: '#15803D', fontWeight: 700 }}>
                         Paid
                       </span>
-                    </div>
+                    )}
+                  </div>
+                  {entry.status === 'waiting' && entry.estimated_wait != null && (
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
                   )}
                 </div>
 
@@ -578,7 +578,12 @@ export default function WalkInPage() {
                 type="text"
                 placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
                 value={custSearch}
-                onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCustSearch(v);
+                  setForm((f) => ({ ...f, customerName: v }));
+                  setShowCustDrop(true);
+                }}
                 onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
                 style={{
                   width: '100%', padding: '9px 12px', borderRadius: 10,
@@ -666,11 +671,6 @@ export default function WalkInPage() {
             <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
             or enter manually
             <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-          </div>
-
-          <div>
-            <Label>Customer Name *</Label>
-            <Input placeholder="Name or 'Walk-in'" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
           </div>
 
           <div>
