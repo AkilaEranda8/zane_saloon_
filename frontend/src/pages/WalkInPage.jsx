@@ -72,6 +72,7 @@ export default function WalkInPage() {
   const [custAll,        setCustAll]        = useState([]);
   const [custLoading,    setCustLoading]    = useState(false);
   const [showCustDrop,   setShowCustDrop]   = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const custSearchRef = useRef(null);
 
   const [branches,  setBranches]  = useState([]);
@@ -232,6 +233,41 @@ export default function WalkInPage() {
       prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid]
     ));
   };
+  const getCheckinSelectedServiceIds = () => {
+    const primary = Number(form.serviceId);
+    if (!primary) return [];
+    return [primary, ...checkinExtraServiceIds.filter((id) => Number(id) !== primary)];
+  };
+  const toggleCheckinService = (id) => {
+    const nid = Number(id);
+    const primary = Number(form.serviceId || 0);
+    const selected = getCheckinSelectedServiceIds();
+    const isSelected = selected.includes(nid);
+
+    if (!isSelected) {
+      if (!primary) {
+        setForm((f) => ({ ...f, serviceId: nid }));
+      } else {
+        setCheckinExtraServiceIds((prev) => prev.includes(nid) ? prev : [...prev, nid]);
+      }
+      return;
+    }
+
+    // Removing currently selected service
+    if (primary === nid) {
+      const remaining = selected.filter((x) => x !== nid);
+      if (remaining.length === 0) {
+        setForm((f) => ({ ...f, serviceId: '' }));
+        setCheckinExtraServiceIds([]);
+      } else {
+        const [nextPrimary, ...rest] = remaining;
+        setForm((f) => ({ ...f, serviceId: String(nextPrimary) }));
+        setCheckinExtraServiceIds(rest);
+      }
+    } else {
+      setCheckinExtraServiceIds((prev) => prev.filter((x) => Number(x) !== nid));
+    }
+  };
   const handleEditSave = async () => {
     if (!editEntry) return;
     if (!editForm.customerName.trim() || !editForm.serviceId) {
@@ -268,9 +304,15 @@ export default function WalkInPage() {
   const handleCheckin = async () => {
     setSaving(true); setFormError('');
     try {
+      const selectedServiceIds = getCheckinSelectedServiceIds();
+      if (!selectedServiceIds.length) {
+        setFormError('Select at least one service.');
+        setSaving(false);
+        return;
+      }
       const baseNote = removeAdditionalServicesLine(form.note || '');
       const extraServiceNames = services
-        .filter((s) => checkinExtraServiceIds.includes(Number(s.id)))
+        .filter((s) => selectedServiceIds.slice(1).includes(Number(s.id)))
         .map((s) => s.name);
       const fullNote = [
         baseNote,
@@ -280,12 +322,13 @@ export default function WalkInPage() {
         customerName: form.customerName,
         phone:        form.phone      || undefined,
         branchId:     form.branchId   || selectedBranch,
-        serviceId:    +form.serviceId,
+        serviceId:    Number(selectedServiceIds[0]),
         note:         fullNote        || undefined,
       });
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
       setCheckinExtraServiceIds([]);
+      setSelectedCustomer(null);
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
@@ -320,6 +363,7 @@ export default function WalkInPage() {
   const selectCustomer = (c) => {
     setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || '' }));
     setCustSearch(c.name);
+    setSelectedCustomer(c);
     setShowCustDrop(false);
   };
 
@@ -336,7 +380,7 @@ export default function WalkInPage() {
       <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
       </Button>
-      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCheckinExtraServiceIds([]); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
+      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCheckinExtraServiceIds([]); setSelectedCustomer(null); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
         + New Walk-in
       </Button>
     </div>
@@ -447,7 +491,7 @@ export default function WalkInPage() {
                 border: '1px solid #EAECF0',
                 borderLeft: `5px solid ${STATUS_BORDER[entry.status] || '#E4E7EC'}`,
                 padding: '16px 20px',
-                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
               }}>
 
                 {/* TOKEN */}
@@ -481,61 +525,63 @@ export default function WalkInPage() {
                   )}
                 </div>
 
-                {/* STAFF */}
-                <div style={{ flex: '0 0 170px' }}>
-                  {stf ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StaffAvatar name={stf.name} size={32} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
-                        {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {/* STAFF */}
+                  <div style={{ minWidth: 150 }}>
+                    {stf ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <StaffAvatar name={stf.name} size={32} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
+                          {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <select
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                      value="" onChange={(e) => assignStaff(entry.id, e.target.value)}
-                    >
-                      <option value="" disabled>Assign staff…</option>
-                      {staffList.filter((s) => s.is_active !== false).map((s) => (
-                        <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
-                          {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* STATUS + WAIT */}
-                <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
-                    {entry.status === 'completed' && (
-                      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
-                        Paid
-                      </span>
+                    ) : (
+                      <select
+                        style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: DARK }}
+                        value="" onChange={(e) => assignStaff(entry.id, e.target.value)}
+                      >
+                        <option value="" disabled>Assign staff…</option>
+                        {staffList.filter((s) => s.is_active !== false).map((s) => (
+                          <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
+                            {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     )}
                   </div>
-                  {entry.status === 'waiting' && entry.estimated_wait != null && (
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
-                  )}
-                </div>
 
-                {/* ACTIONS */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                  {entry.status !== 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
-                  )}
-                  {entry.status === 'waiting' && (
-                    <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
-                  )}
-                  {entry.status === 'serving' && (
-                    <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
-                  {(entry.status === 'waiting' || entry.status === 'serving') && (
-                    <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
-                  )}
+                  {/* STATUS + WAIT */}
+                  <div style={{ minWidth: 140, textAlign: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
+                      {entry.status === 'completed' && (
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
+                          Paid
+                        </span>
+                      )}
+                    </div>
+                    {entry.status === 'waiting' && entry.estimated_wait != null && (
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
+                    )}
+                  </div>
+
+                  {/* ACTIONS */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {entry.status !== 'completed' && (
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
+                    )}
+                    {entry.status === 'waiting' && (
+                      <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
+                    )}
+                    {entry.status === 'serving' && (
+                      <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
+                    {(entry.status === 'waiting' || entry.status === 'serving') && (
+                      <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -544,7 +590,7 @@ export default function WalkInPage() {
       )}
 
       {/*  CHECK-IN MODAL  */}
-      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCheckinExtraServiceIds([]); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
+      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCheckinExtraServiceIds([]); setSelectedCustomer(null); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {formError && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
@@ -561,7 +607,7 @@ export default function WalkInPage() {
             </div>
           )}
 
-          {/* CUSTOMER SEARCH */}
+          {/* CUSTOMER SEARCH / CARD */}
           <div style={{ position: 'relative' }} ref={custSearchRef}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <Label style={{ margin: 0 }}>Select Customer</Label>
@@ -573,26 +619,53 @@ export default function WalkInPage() {
               )}
             </div>
 
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
-                value={custSearch}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setCustSearch(v);
-                  setForm((f) => ({ ...f, customerName: v }));
-                  setShowCustDrop(true);
-                }}
-                onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 10,
-                  border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
-                  background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
-              />
-            </div>
+            {selectedCustomer ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#ECFDF3', border: '1px solid #86EFAC', borderRadius: 12, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#D1FAE5', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                    {selectedCustomer.name?.charAt(0)?.toUpperCase() || 'C'}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#065F46' }}>{selectedCustomer.name}</div>
+                    <div style={{ fontSize: 12, color: '#047857' }}>{selectedCustomer.phone || 'No phone'}</div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setSelectedCustomer(null);
+                    setCustSearch('');
+                    setForm((f) => ({ ...f, customerName: '', phone: '' }));
+                    setShowCustDrop(true);
+                  }}
+                >
+                  Change
+                </Button>
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
+                  value={custSearch}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCustSearch(v);
+                    setSelectedCustomer(null);
+                    setForm((f) => ({ ...f, customerName: v }));
+                    setShowCustDrop(true);
+                  }}
+                  onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: 10,
+                    border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
+                    background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
+                />
+              </div>
+            )}
 
             {/* DROPDOWN — shows all or filtered */}
             {showCustDrop && !custLoading && (custResults.length > 0 || custSearch.trim()) && (
@@ -667,46 +740,25 @@ export default function WalkInPage() {
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94A3B8', fontSize: 12, fontWeight: 500 }}>
-            <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-            or enter manually
-            <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-          </div>
-
           <div>
             <Label>Phone</Label>
             <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </div>
 
           <div>
-            <Label>Service *</Label>
-            <select style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-              value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
-              <option value="">Select service</option>
-              {services.filter((s) => s.is_active !== false).map((s) => (
-                <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Additional Services (Optional)</Label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-              {services
-                .filter((s) => s.is_active !== false && Number(s.id) !== Number(form.serviceId))
-                .map((s) => {
-                  const active = checkinExtraServiceIds.includes(Number(s.id));
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => toggleCheckinExtraService(s.id)}
-                      style={{ padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-                    >
-                      {s.name}
-                      {s.price ? <span style={{ marginLeft: 6, opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
-                    </button>
-                  );
-                })}
+            <Label>Services * (Select one or more)</Label>
+            <div style={{ border: '1px solid #DCE6F3', borderRadius: 12, overflow: 'hidden', marginTop: 4, maxHeight: 220, overflowY: 'auto' }}>
+              {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
+                const active = getCheckinSelectedServiceIds().includes(Number(s.id));
+                return (
+                  <label key={s.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? '1px solid #EEF2F6' : 'none', background: active ? '#F0F9FF' : '#fff', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={active} onChange={() => toggleCheckinService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: '#0F172A' }}>{s.name}</span>
+                    <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
+                    <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -767,33 +819,68 @@ export default function WalkInPage() {
               <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}>Payment Recorded!</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {paymentError && (
                 <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
                   {paymentError}
                 </div>
               )}
-              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{paymentEntry.customer_name || 'Walk-in'}</div>
-                {paymentEntry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{paymentEntry.phone}</div>}
+              <div style={{ background: '#F8FAFC', border: '1px solid #EEF2F6', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 10, background: '#172554', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20 }}>
+                  {(paymentEntry.customer_name || 'W').trim().charAt(0).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{paymentEntry.customer_name || 'Walk-in'}</div>
+                  <div style={{ marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                    {paymentEntry.phone && <span>📞 {paymentEntry.phone}</span>}
+                    {(paymentEntry.staff?.name || paymentEntry.staff_id) && <span>✂ {paymentEntry.staff?.name || 'Staff'}</span>}
+                  </div>
+                </div>
               </div>
               <div>
-                <Label>Services *</Label>
+                <div style={{ border: '1px solid #E5EAF0', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+                  {services.filter((s) => paymentServices.includes(Number(s.id))).map((s, idx, arr) => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? '1px solid #EEF2F6' : 'none' }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{s.name}</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</div>
+                      <div style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {Number(s.price || 0).toLocaleString()}</div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#F8FAFC', borderTop: '1px solid #EEF2F6' }}>
+                    <span style={{ fontWeight: 700, color: '#0F172A' }}>Total</span>
+                    <span style={{ fontSize: 30, fontWeight: 900, color: '#059669', lineHeight: 1 }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {services.filter((s) => s.is_active !== false).map((s) => {
-                    const active = paymentServices.includes(Number(s.id));
+                  {['Cash', 'Card', 'Online Transfer'].map((m) => {
+                    const active = paymentMethod === m;
                     return (
-                      <button key={s.id} onClick={() => togglePaymentService(s.id)} style={{ padding: '7px 14px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                        {s.name}
-                        {s.price ? <span style={{ opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setPaymentMethod(m)}
+                        style={{
+                          padding: '8px 18px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${active ? '#10B981' : '#CBD5E1'}`,
+                          background: active ? '#ECFDF5' : '#fff',
+                          color: '#0F172A',
+                          fontWeight: 700,
+                          fontSize: 15,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {m}
                       </button>
                     );
                   })}
                 </div>
-                {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
                 <div>
                   <Label>Amount (Rs.) *</Label>
                   <Input
@@ -804,22 +891,20 @@ export default function WalkInPage() {
                     placeholder="0"
                   />
                 </div>
-                <div>
-                  <Label>Payment Method *</Label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                  >
-                    {['Cash', 'Card', 'Bank Transfer', 'Online'].map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                <div style={{ marginTop: 8 }}>
+                  <Label>Select Services *</Label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                    {services.filter((s) => s.is_active !== false).map((s) => {
+                      const active = paymentServices.includes(Number(s.id));
+                      return (
+                        <button key={s.id} type="button" onClick={() => togglePaymentService(s.id)} style={{ padding: '6px 10px', borderRadius: 8, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
                 </div>
-              </div>
-              <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #BBF7D0' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#166534' }}>Total</span>
-                <span style={{ fontSize: 18, fontWeight: 800, color: '#059669' }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
               </div>
             </div>
           )
@@ -827,8 +912,8 @@ export default function WalkInPage() {
         {!paymentOk && (
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
             <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
-            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0}>
-              Confirm Payment
+            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0 || !paymentServices.length}>
+              {paymentSaving ? 'Collecting...' : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
             </Button>
           </div>
         )}
