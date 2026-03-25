@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../api/axios';
+import AiChatWidget from '../components/ui/AiChatWidget';
 
 const colors = {
   primary: '#3b82f6',
@@ -466,5 +467,6 @@ export default function BookingPage() {
         )}
       </div>
     </div>
+    <AiChatWidget />
   );
 }
