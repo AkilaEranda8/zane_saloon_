@@ -55,25 +55,59 @@ router.get('/staff', async (req, res) => {
   }
 });
 
-// ── GET /api/public/availability?staffId=&date= — booked time slots ─────────
+// ── GET /api/public/availability?staffId=&date=&duration= ────────────────────
+// Returns available HH:MM time slots considering existing appointment durations.
+// duration = new booking's service duration in minutes (default 30).
 router.get('/availability', async (req, res) => {
   try {
-    const { staffId, date } = req.query;
+    const { staffId, date, duration } = req.query;
     if (!staffId || !date) {
       return res.status(400).json({ message: 'staffId and date are required' });
     }
 
+    const newDuration = Math.max(30, parseInt(duration, 10) || 30);
+
+    // Fetch existing appointments with their service duration
     const appointments = await Appointment.findAll({
       where: {
         staff_id: parseInt(staffId, 10),
         date,
         status: { [Op.in]: ['pending', 'confirmed'] },
       },
-      attributes: ['time'],
+      attributes: ['time', 'service_id'],
+      include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
     });
 
-    const bookedTimes = appointments.map((a) => a.time.substring(0, 5)); // "HH:MM"
-    res.json(bookedTimes);
+    // Build blocked ranges as [startMin, endMin] in minutes-since-midnight
+    const blockedRanges = appointments.map((a) => {
+      const [h, m] = a.time.substring(0, 5).split(':').map(Number);
+      const startMin = h * 60 + m;
+      const dur = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
+      return [startMin, startMin + dur];
+    });
+
+    // Generate all 30-min slots: 09:00 → 18:00
+    const allSlots = [];
+    for (let min = 9 * 60; min < 18 * 60; min += 30) {
+      allSlots.push(min);
+    }
+
+    // A slot is available if [slotStart, slotStart + newDuration] does NOT overlap any blocked range
+    const available = allSlots.filter((slotStart) => {
+      const slotEnd = slotStart + newDuration;
+      // Also ensure the appointment ends by 18:30 (1110 min)
+      if (slotEnd > 18 * 60 + 30) return false;
+      return !blockedRanges.some(([bStart, bEnd]) => slotStart < bEnd && slotEnd > bStart);
+    });
+
+    // Convert back to "HH:MM"
+    const result = available.map((min) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    });
+
+    res.json(result);
   } catch (err) {
     console.error('Public availability error:', err);
     res.status(500).json({ message: 'Server error' });
