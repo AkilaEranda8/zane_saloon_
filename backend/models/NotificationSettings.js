@@ -54,6 +54,16 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: false,
     allowNull: false,
   },
+  customer_registered_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
+  customer_registered_email: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
   sms_sender_id: {
     type: DataTypes.STRING(50),
     allowNull: true,

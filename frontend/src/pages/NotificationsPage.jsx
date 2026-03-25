@@ -6,10 +6,11 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
 
-const EVENTS = ['appointment_confirmed','payment_receipt','loyalty_points'];
-const EVENT_LABELS = { appointment_confirmed:'Appointment Confirmed', payment_receipt:'Payment Receipt', loyalty_points:'Loyalty Points' };
-const EVENT_CHANNELS = { appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
+const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points'];
+const EVENT_LABELS = { customer_registered:'Customer Registered', appointment_confirmed:'Appointment Confirmed', payment_receipt:'Payment Receipt', loyalty_points:'Loyalty Points' };
+const EVENT_CHANNELS = { customer_registered:['email','sms'], appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
 const SETTINGS_KEY = {
+  customer_registered_email:'customer_registered_email', customer_registered_sms:'customer_registered_sms',
   appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp', appointment_confirmed_sms:'appt_confirmed_sms',
   payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
   loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',

@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
+const { notifyCustomerRegistered } = require('../services/notificationService');
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -65,6 +66,11 @@ const create = async (req, res) => {
     if (!name) return res.status(400).json({ message: 'Customer name is required.' });
 
     const cust = await Customer.create({ name, phone, email, branch_id });
+
+    // Fire-and-forget welcome notification
+    const branch = branch_id ? await Branch.findByPk(branch_id, { attributes: ['id', 'name', 'phone'] }) : null;
+    notifyCustomerRegistered(cust, branch).catch(e => console.error('[notifyCustomerRegistered]', e.message));
+
     return res.status(201).json(cust);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

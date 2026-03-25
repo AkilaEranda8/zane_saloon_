@@ -4,14 +4,16 @@ const { NotificationLog, NotificationSettings } = require('../models');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
 
 const DEFAULT_SETTINGS = {
-  appt_confirmed_email:     true,
-  appt_confirmed_whatsapp:  true,
-  appt_confirmed_sms:       false,
-  payment_receipt_email:    true,
-  payment_receipt_whatsapp: true,
-  payment_receipt_sms:      false,
-  loyalty_points_whatsapp:  true,
-  loyalty_points_sms:       false,
+  appt_confirmed_email:       true,
+  appt_confirmed_whatsapp:    true,
+  appt_confirmed_sms:         false,
+  payment_receipt_email:      true,
+  payment_receipt_whatsapp:   true,
+  payment_receipt_sms:        false,
+  loyalty_points_whatsapp:    true,
+  loyalty_points_sms:         false,
+  customer_registered_sms:    false,
+  customer_registered_email:  false,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);

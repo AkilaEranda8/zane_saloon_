@@ -122,14 +122,16 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 
 // ── Settings loader ───────────────────────────────────────────────────────────
 const DEFAULT_FLAGS = {
-  appt_confirmed_email:     true,
-  appt_confirmed_whatsapp:  true,
-  appt_confirmed_sms:       false,
-  payment_receipt_email:    true,
-  payment_receipt_whatsapp: true,
-  payment_receipt_sms:      false,
-  loyalty_points_whatsapp:  true,
-  loyalty_points_sms:       false,
+  appt_confirmed_email:       true,
+  appt_confirmed_whatsapp:    true,
+  appt_confirmed_sms:         false,
+  payment_receipt_email:      true,
+  payment_receipt_whatsapp:   true,
+  payment_receipt_sms:        false,
+  loyalty_points_whatsapp:    true,
+  loyalty_points_sms:         false,
+  customer_registered_sms:    false,
+  customer_registered_email:  false,
 };
 
 async function getChannelFlags() {
@@ -598,6 +600,49 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
   }
 }
 
+// ── 5. Customer Registered ────────────────────────────────────────────────────
+async function notifyCustomerRegistered(customer, branch) {
+  const flags = await getChannelFlags();
+  const phone = customer?.phone || null;
+  const email = customer?.email || null;
+  if (!phone && !email) return;
+
+  const customerName = customer?.name || 'Valued Customer';
+  const brName       = branch?.name  || 'Zane Salon';
+  const brPhone      = branch?.phone || '';
+  const meta         = {
+    customer_name: customerName,
+    event_type:    'customer_registered',
+    branch_id:     branch?.id || customer?.branch_id || null,
+  };
+
+  if (email && flags.customer_registered_email) {
+    const body = `
+      <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Welcome to ${brName}! 🎉</h2>
+      <p style="margin:0 0 16px;font-size:15px;color:#475569;">
+        Hi <strong>${customerName}</strong>, you've been registered at <strong>${brName}</strong>.
+        We're excited to have you as a valued customer!
+      </p>
+      <p style="margin:0;font-size:15px;color:#475569;">
+        Book your next appointment or visit us at any time. We look forward to serving you! 💜
+      </p>`;
+    await sendEmail({
+      to:      email,
+      subject: `Welcome to ${brName}!`,
+      html:    buildEmailWrapper('Welcome!', body, brName, brPhone),
+      meta,
+    });
+  }
+
+  if (phone && flags.customer_registered_sms) {
+    const msg =
+      `Welcome to ${brName}! 🎉\n` +
+      `Hi ${customerName}, you're now registered as a valued customer.\n` +
+      `We look forward to serving you!`;
+    await sendSMS({ to: phone, message: msg, meta });
+  }
+}
+
 module.exports = {
   sendEmail,
   sendWhatsApp,
@@ -606,5 +651,6 @@ module.exports = {
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
   notifyReviewRequest,
+  notifyCustomerRegistered,
 };
 
