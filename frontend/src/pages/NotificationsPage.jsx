@@ -185,6 +185,11 @@ export default function NotificationsPage() {
                   })}
                 </tbody>
               </table>
+              {/* Save button — right below toggles for easy access */}
+              <div style={{ marginTop:16, display:'flex', justifyContent:'flex-end' }}>
+                <Button onClick={saveSettings} disabled={settingsBusy}>{settingsBusy ? 'Saving…' : 'Save Settings'}</Button>
+              </div>
+
               {/* SMS Provider (Notify.lk) */}
               <div style={{ marginTop:20, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setSmsOpen(o => !o)}
