@@ -86,9 +86,10 @@ router.get('/availability', async (req, res) => {
       return [startMin, startMin + dur];
     });
 
-    // Generate all 30-min slots: 09:00 → 18:00
+    // Generate slots using service duration as interval: 09:00 → 18:00
+    const slotInterval = newDuration;
     const allSlots = [];
-    for (let min = 9 * 60; min < 18 * 60; min += 30) {
+    for (let min = 9 * 60; min < 18 * 60; min += slotInterval) {
       allSlots.push(min);
     }
 
