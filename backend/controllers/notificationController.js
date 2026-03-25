@@ -293,11 +293,17 @@ const testProvider = async (req, res) => {
     }
 
     if (provider === 'sms') {
-      await sendSMS({
+      const result = await sendSMS({
         to,
         message: `[Zane Salon] SMS test successful! Sent at ${date}.`,
         meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
       });
+      if (result && result.status === 'failed') {
+        return res.status(502).json({ message: `SMS failed: ${result.error}` });
+      }
+      if (!result) {
+        return res.status(400).json({ message: 'SMS not sent — check User ID, API Key, and Sender ID.' });
+      }
       return res.json({ message: `Test SMS sent to ${to}` });
     }
 

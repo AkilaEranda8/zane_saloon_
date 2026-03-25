@@ -250,37 +250,46 @@ async function sendSMS({ to, message, meta = {} }) {
   const creds = await getSMSCreds();
   if (!creds) {
     console.warn('[Notifications] SMS skipped — SMS credentials not configured (set User ID & API Key in Notification Settings).');
-    return;
+    return null;
   }
   if (!creds.senderId) {
     console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
-    return;
+    return null;
   }
   // Normalize to local format (e.g. 0771234567 or 94771234567 → 94771234567)
   const digits = to.replace(/\D/g, '');
   const toFormatted = digits.startsWith('94') ? digits : digits.startsWith('0') ? '94' + digits.slice(1) : '94' + digits;
   let status = 'sent', errorMsg = null;
   try {
-    const res = await fetch('https://app.notify.lk/api/v1/send', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        user_id:    creds.userId,
-        api_key:    creds.apiKey,
-        service_id: creds.senderId,
-        to:         toFormatted,
-        message,
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    let res;
+    try {
+      res = await fetch('https://app.notify.lk/api/v1/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  controller.signal,
+        body:    JSON.stringify({
+          user_id:    creds.userId,
+          api_key:    creds.apiKey,
+          service_id: creds.senderId,
+          to:         toFormatted,
+          message,
+        }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     const data = await res.json().catch(() => ({}));
+    console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
     if (!res.ok || data.status === 'error') {
       throw new Error(data.message || `HTTP ${res.status}`);
     }
     console.log(`[Notifications] SMS sent → ${toFormatted}`);
   } catch (err) {
     status   = 'failed';
-    errorMsg = err.message;
-    console.error(`[Notifications] SMS failed → ${toFormatted}:`, err.message);
+    errorMsg = err.name === 'AbortError' ? 'SMS gateway timeout (15s)' : err.message;
+    console.error(`[Notifications] SMS failed → ${toFormatted}:`, errorMsg);
   }
   await writeLog({
     ...meta,
@@ -290,6 +299,7 @@ async function sendSMS({ to, message, meta = {} }) {
     status,
     error_message:   errorMsg,
   });
+  return { status, error: errorMsg };
 }
 
 // ── HTML escaping helper ─────────────────────────────────────────────────────
