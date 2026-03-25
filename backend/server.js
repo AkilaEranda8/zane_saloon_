@@ -28,6 +28,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost',        // Docker nginx (port 80)
   'http://localhost:80',
+  'http://zanesalon.com',
+  'https://zanesalon.com',
+  'http://www.zanesalon.com',
+  'https://www.zanesalon.com',
   'http://main.zanesalon.com',
   'https://main.zanesalon.com',
   'http://api.zanesalon.com',
