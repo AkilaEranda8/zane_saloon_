@@ -388,6 +388,7 @@ export default function BookingPage() {
   const stepRenderers = [renderBranch, renderService, renderStaffTime, renderDetails, renderConfirmation];
 
   return (
+    <>
     <div style={S.page}>
       {/* Admin link */}
       <a href="/login" style={S.adminLink}>← Back to Management</a>
@@ -468,5 +469,6 @@ export default function BookingPage() {
       </div>
     </div>
     <AiChatWidget />
+    </>
   );
 }
