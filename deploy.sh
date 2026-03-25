@@ -2,7 +2,7 @@
 set -e
 
 echo "════════════════════════════════════════════"
-echo "  Zane Salon - VPS Deployment Script"
+echo "  Xane Salon - VPS Deployment Script"
 echo "════════════════════════════════════════════"
 
 # ── 1. Install Docker ──────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ else
 fi
 
 # ── 3. Clone the repository ───────────────────────────────────────────────────
-APP_DIR="/root/zane_salon"
+APP_DIR="/root/xanesalon"
 
 if [ -d "$APP_DIR" ]; then
     echo ""
@@ -107,7 +107,8 @@ echo "════════════════════════�
 echo ""
 docker compose ps
 echo ""
-echo "  Frontend:    http://main.zanesalon.com"
-echo "  API:         http://api.zanesalon.com"
-echo "  phpMyAdmin:  http://pma.zanesalon.com"
+echo "    Website:     https://xanesalon.com"
+  echo "  Management:  https://main.xanesalon.com"
+  echo "  API:         https://api.xanesalon.com"
+  echo "  phpMyAdmin:  https://pma.xanesalon.com"
 echo ""

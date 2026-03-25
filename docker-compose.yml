@@ -4,6 +4,7 @@ services:
     image: nginx:alpine
     restart: unless-stopped
     depends_on:
+      - website
       - frontend
       - backend
       - aibot
@@ -77,6 +78,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  # 🌸 Public Website (xanesalon.com) ────────────────────────────────────────
+  website:
+    build: ./website
+    restart: unless-stopped
+    expose:
+      - "80"
 
   frontend:
     build:
