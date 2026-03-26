@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
+const jwt = require('jsonwebtoken');
 const Branch = require('../models/Branch');
 const Service = require('../models/Service');
 const Staff = require('../models/Staff');
 const Appointment = require('../models/Appointment');
+const Customer = require('../models/Customer');
 const { sendSMS } = require('../services/notificationService');
 
 // ── GET /api/public/branches — active branches only ──────────────────────────
@@ -126,6 +128,178 @@ const toHHMM = (minutes) => {
   const m = minutes % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
+
+// ── Customer Self-Service Portal (Phone OTP + JWT) ───────────────────────────
+const otpStore = new Map(); // key: normalized phone, value: { code, expiresAt, attempts }
+const OTP_TTL_MS = 5 * 60 * 1000;
+
+const normalizePhoneDigits = (phone = '') => String(phone).replace(/\D/g, '');
+const buildPhoneVariants = (phone = '') => {
+  const digits = normalizePhoneDigits(phone);
+  if (!digits) return [];
+  const set = new Set([digits]);
+  if (digits.startsWith('0')) set.add(`94${digits.slice(1)}`);
+  if (digits.startsWith('94')) set.add(`0${digits.slice(2)}`);
+  return Array.from(set);
+};
+
+const portalAuth = (req, res, next) => {
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ message: 'Portal token required.' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.type !== 'customer_portal' || !decoded.phone) {
+      return res.status(401).json({ message: 'Invalid portal token.' });
+    }
+    req.portalPhone = decoded.phone;
+    return next();
+  } catch (_err) {
+    return res.status(401).json({ message: 'Invalid or expired portal token.' });
+  }
+};
+
+router.post('/customer-portal/request-otp', async (req, res) => {
+  try {
+    const { phone } = req.body || {};
+    const normalized = normalizePhoneDigits(phone);
+    if (!normalized) return res.status(400).json({ message: 'Phone is required.' });
+
+    const variants = buildPhoneVariants(normalized);
+    const existing = await Appointment.count({
+      where: { phone: { [Op.or]: variants } },
+    });
+    if (!existing) {
+      return res.status(404).json({ message: 'No bookings found for this phone number.' });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+
+    const sms = `Zane Salon OTP: ${code}. Valid for 5 minutes.`;
+    await sendSMS({ to: normalized, message: sms, meta: { event_type: 'portal_otp' } });
+
+    const response = { message: 'OTP sent successfully.' };
+    if (process.env.NODE_ENV !== 'production') response.debug_otp = code;
+    return res.json(response);
+  } catch (err) {
+    console.error('portal.requestOtp error:', err);
+    return res.status(500).json({ message: 'Failed to send OTP.' });
+  }
+});
+
+router.post('/customer-portal/verify-otp', async (req, res) => {
+  try {
+    const { phone, otp } = req.body || {};
+    const normalized = normalizePhoneDigits(phone);
+    if (!normalized || !otp) return res.status(400).json({ message: 'Phone and OTP are required.' });
+
+    const row = otpStore.get(normalized);
+    if (!row || Date.now() > row.expiresAt) {
+      otpStore.delete(normalized);
+      return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
+    }
+    if (row.attempts >= 5) {
+      otpStore.delete(normalized);
+      return res.status(429).json({ message: 'Too many invalid attempts. Request a new OTP.' });
+    }
+    if (String(otp) !== String(row.code)) {
+      row.attempts += 1;
+      otpStore.set(normalized, row);
+      return res.status(401).json({ message: 'Invalid OTP.' });
+    }
+    otpStore.delete(normalized);
+
+    const token = jwt.sign(
+      { type: 'customer_portal', phone: normalized },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    return res.json({ token });
+  } catch (err) {
+    console.error('portal.verifyOtp error:', err);
+    return res.status(500).json({ message: 'Failed to verify OTP.' });
+  }
+});
+
+router.get('/customer-portal/me', portalAuth, async (req, res) => {
+  try {
+    const variants = buildPhoneVariants(req.portalPhone);
+    const [appointments, customers] = await Promise.all([
+      Appointment.findAll({
+        where: { phone: { [Op.or]: variants } },
+        attributes: ['customer_name'],
+        order: [['createdAt', 'DESC']],
+        limit: 1,
+      }),
+      Customer.findAll({
+        where: { phone: { [Op.or]: variants } },
+        attributes: ['id', 'name', 'phone', 'loyalty_points'],
+      }),
+    ]);
+    const latestAppt = appointments[0];
+    const totalPoints = customers.reduce((sum, c) => sum + Number(c.loyalty_points || 0), 0);
+    return res.json({
+      name: latestAppt?.customer_name || customers[0]?.name || 'Customer',
+      phone: req.portalPhone,
+      loyalty_points: totalPoints,
+    });
+  } catch (err) {
+    console.error('portal.me error:', err);
+    return res.status(500).json({ message: 'Failed to load customer profile.' });
+  }
+});
+
+router.get('/customer-portal/bookings', portalAuth, async (req, res) => {
+  try {
+    const variants = buildPhoneVariants(req.portalPhone);
+    const bookings = await Appointment.findAll({
+      where: { phone: { [Op.or]: variants } },
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'duration_minutes'] },
+        { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+      ],
+      order: [['date', 'DESC'], ['time', 'DESC']],
+      limit: 100,
+    });
+    return res.json(bookings);
+  } catch (err) {
+    console.error('portal.bookings error:', err);
+    return res.status(500).json({ message: 'Failed to load bookings.' });
+  }
+});
+
+router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
+  try {
+    const { appointmentId, date, time } = req.body || {};
+    if (!appointmentId || !date || !time) {
+      return res.status(400).json({ message: 'appointmentId, date and time are required.' });
+    }
+    const variants = buildPhoneVariants(req.portalPhone);
+    const source = await Appointment.findOne({
+      where: { id: appointmentId, phone: { [Op.or]: variants } },
+    });
+    if (!source) return res.status(404).json({ message: 'Booking not found.' });
+
+    const created = await Appointment.create({
+      branch_id: source.branch_id,
+      service_id: source.service_id,
+      staff_id: source.staff_id,
+      customer_name: source.customer_name,
+      phone: source.phone,
+      date,
+      time,
+      amount: source.amount,
+      status: 'pending',
+      notes: source.notes,
+    });
+    return res.status(201).json({ message: 'Rebooking submitted.', booking: created });
+  } catch (err) {
+    console.error('portal.rebook error:', err);
+    return res.status(500).json({ message: 'Failed to rebook appointment.' });
+  }
+});
 
 // ── POST /api/public/bookings — create one or many appointments (pending) ────
 router.post('/bookings', async (req, res) => {

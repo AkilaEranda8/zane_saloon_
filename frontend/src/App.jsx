@@ -23,6 +23,7 @@ import ReportsPage     from './pages/ReportsPage';
 import BranchesPage    from './pages/BranchesPage';
 import UsersPage       from './pages/UsersPage';
 import BookingPage     from './pages/BookingPage';
+import CustomerPortalPage from './pages/CustomerPortalPage';
 import WalkInPage      from './pages/WalkInPage';
 import TokenDisplayScreen from './pages/TokenDisplayScreen';
 import NotificationsPage from './pages/NotificationsPage';
@@ -194,6 +195,7 @@ export default function App() {
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
       <Route path="/booking"       element={<BookingPage />} />
+      <Route path="/customer-portal" element={<CustomerPortalPage />} />
       <Route path="/token-display" element={<TokenDisplayScreen />} />
       <Route path="/review/:token" element={<ReviewFormPage />} />
 

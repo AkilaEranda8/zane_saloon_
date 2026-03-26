@@ -27,7 +27,12 @@ const defaultInclude = [
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
 exports.list = async (req, res) => {
   try {
-    const { branchId, date, status } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+    const { branchId, date, status } = req.query;
+    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });
+    if (req.userBranchId && Number(branchId) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only view your own branch queue.' });
+    }
+    const where = {
       branch_id: branchId,
       check_in_date: date || today(),
     };
@@ -49,7 +54,12 @@ exports.list = async (req, res) => {
 // ── GET /api/walkin/stats ─────────────────────────────────────────────────────
 exports.stats = async (req, res) => {
   try {
-    const { branchId, date } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+    const { branchId, date } = req.query;
+    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });
+    if (req.userBranchId && Number(branchId) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only view your own branch queue.' });
+    }
+    const where = {
       branch_id: branchId,
       check_in_date: date || today(),
     };
@@ -73,6 +83,9 @@ exports.checkin = async (req, res) => {
 
     if (!customerName || !branchId || !serviceId) {
       return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
+    }
+    if (req.userBranchId && Number(branchId) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only check in for your own branch.' });
     }
 
     const dateStr = today();
@@ -167,6 +180,9 @@ exports.updateStatus = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. Walk-in belongs to a different branch.' });
+    }
 
     entry.status = status;
     if (status === 'serving') {
@@ -193,6 +209,9 @@ exports.assign = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. Walk-in belongs to a different branch.' });
+    }
 
     entry.staff_id = staffId;
     entry.status = 'serving';
@@ -216,6 +235,9 @@ exports.update = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. Walk-in belongs to a different branch.' });
+    }
     if (entry.status === 'completed') {
       return res.status(400).json({ message: 'Completed walk-in entries cannot be edited.' });
     }
@@ -251,6 +273,9 @@ exports.remove = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. Walk-in belongs to a different branch.' });
+    }
 
     const branchId = entry.branch_id;
     await entry.destroy();

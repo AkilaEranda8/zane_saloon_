@@ -209,6 +209,9 @@ const getOne = async (req, res) => {
       ],
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+    if (req.userBranchId && appt.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+    }
     const plain = appt.get({ plain: true });
     plain.service_ids = await getSelectedServiceIdsForAppointment(plain);
     return res.json(plain);
@@ -229,6 +232,9 @@ const create = async (req, res) => {
 
     if (!branch_id || !effectiveServiceId || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
+    }
+    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only create appointments for your own branch.' });
     }
 
     // Build service selection in order: primary first, then extras.
@@ -477,6 +483,9 @@ const stopRecurring = async (req, res) => {
   try {
     const appt = await Appointment.findByPk(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+    if (req.userBranchId && appt.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+    }
 
     await appt.update({ is_recurring: false });
 

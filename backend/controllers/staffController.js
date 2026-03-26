@@ -57,6 +57,9 @@ const getOne = async (req, res) => {
     });
 
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
+    }
 
     // Appointment count & total commission
     const apptCount = await Appointment.count({ where: { staff_id: staff.id } });
@@ -74,6 +77,9 @@ const create = async (req, res) => {
 
     if (!name || !branch_id) {
       return res.status(400).json({ message: 'Name and branch_id are required.' });
+    }
+    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only create staff for your own branch.' });
     }
 
     const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date });
@@ -118,6 +124,9 @@ const remove = async (req, res) => {
   try {
     const staff = await Staff.findByPk(req.params.id);
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
+    }
 
     await staff.destroy();
     return res.json({ message: 'Staff deleted.' });

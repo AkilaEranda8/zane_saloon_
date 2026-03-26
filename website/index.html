@@ -15,6 +15,14 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
     />
+    <script>
+      (function () {
+        var p = window.location.pathname || '';
+        if (p === '/customer-portal' || p.indexOf('/customer-portal/') === 0) {
+          window.location.replace('https://main.zanesalon.com' + p + window.location.search + window.location.hash);
+        }
+      })();
+    </script>
     <script type="module" crossorigin src="/assets/index-DC4k5wfG.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DNGJ4e7S.css">
   </head>

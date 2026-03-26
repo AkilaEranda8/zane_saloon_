@@ -120,6 +120,10 @@ const create = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ message: 'branch_id is required.' });
     }
+    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Access denied. You can only create payments for your own branch.' });
+    }
 
     if (!splits.length) {
       await t.rollback();
@@ -133,8 +137,7 @@ const create = async (req, res) => {
     // Fetch staff to calculate commission
     let commission_amount = 0;
     if (staff_id) {
-      const { Staff: StaffModel } = require('../models');
-      const staffMember = await StaffModel.findByPk(staff_id, { transaction: t });
+      const staffMember = await Staff.findByPk(staff_id, { transaction: t });
       if (staffMember) {
         const commissionBase = Math.max(0, total_amount - loyalty_discount);
         commission_amount = staffMember.commission_type === 'percentage'
@@ -189,8 +192,7 @@ const create = async (req, res) => {
 
     // Update customer stats
     if (customer_id) {
-      const { Customer: CustModel } = require('../models');
-      const cust = await CustModel.findByPk(customer_id, { transaction: t });
+      const cust = await Customer.findByPk(customer_id, { transaction: t });
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
         if (usePoints && loyalty_discount > 0) {
@@ -208,9 +210,12 @@ const create = async (req, res) => {
 
     // Mark appointment commission
     if (appointment_id) {
-      const { Appointment: ApptModel } = require('../models');
       if (selectedServiceIds.length) {
-        const appt = await ApptModel.findByPk(appointment_id, { transaction: t, attributes: ['id', 'notes'] });
+        const appt = await Appointment.findByPk(appointment_id, { transaction: t, attributes: ['id', 'notes', 'branch_id'] });
+        if (appt && req.userBranchId && Number(appt.branch_id) !== Number(req.userBranchId)) {
+          await t.rollback();
+          return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+        }
         const selectedServices = await Service.findAll({
           where: { id: { [Op.in]: selectedServiceIds } },
           attributes: ['id', 'name'],
@@ -227,7 +232,7 @@ const create = async (req, res) => {
           extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
         ].filter(Boolean).join('\n');
 
-        await ApptModel.update({
+        await Appointment.update({
           service_id: selectedServiceIds[0],
           amount: total_amount,
           notes: mergedNotes || null,
@@ -238,7 +243,12 @@ const create = async (req, res) => {
         });
         await syncAppointmentServices(appointment_id, selectedServiceIds, t);
       } else {
-        await ApptModel.update({ commission_paid: commission_amount }, {
+        const appt = await Appointment.findByPk(appointment_id, { transaction: t, attributes: ['id', 'branch_id'] });
+        if (appt && req.userBranchId && Number(appt.branch_id) !== Number(req.userBranchId)) {
+          await t.rollback();
+          return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+        }
+        await Appointment.update({ commission_paid: commission_amount }, {
           where: { id: appointment_id },
           transaction: t,
         });
@@ -255,8 +265,7 @@ const create = async (req, res) => {
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
         (async () => {
           if (!customer_id) return null;
-          const { Customer: CustModel } = require('../models');
-          return CustModel.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
+          return Customer.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
         })(),
         (async () => {
           if (!appointment_id) return null;
@@ -342,8 +351,7 @@ const create = async (req, res) => {
         );
 
         if (customer_id && points_earned > 0) {
-          const { Customer: CustModel } = require('../models');
-          const freshCust = await CustModel.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
+          const freshCust = await Customer.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
           if (freshCust) {
             notifyLoyaltyPoints(freshCust, points_earned, freshCust.loyalty_points || 0, branch);
           }
@@ -379,9 +387,9 @@ const summary = async (req, res) => {
       where,
       attributes: [
         'branch_id',
-        [fn('SUM', col('total_amount')),    'revenue'],
-        [fn('SUM', col('commission_amount')), 'commission'],
-        [fn('COUNT', col('id')),            'count'],
+        [fn('SUM', col('Payment.total_amount')),      'revenue'],
+        [fn('SUM', col('Payment.commission_amount')), 'commission'],
+        [fn('COUNT', col('Payment.id')),              'count'],
       ],
       // Keep summary resilient across environments where optional branch fields
       // (like color) may not exist yet in DB schema.

@@ -81,6 +81,9 @@ const getOne = async (req, res) => {
     });
 
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (req.userBranchId && cust.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Customer belongs to a different branch.' });
+    }
     return res.json(cust);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -91,6 +94,9 @@ const create = async (req, res) => {
   try {
     const { name, phone, email, branch_id } = req.body;
     if (!name) return res.status(400).json({ message: 'Customer name is required.' });
+    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied. You can only create customers for your own branch.' });
+    }
 
     const cust = await Customer.create({ name, phone, email, branch_id });
 
@@ -109,6 +115,9 @@ const update = async (req, res) => {
   try {
     const cust = await Customer.findByPk(req.params.id);
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (req.userBranchId && cust.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Customer belongs to a different branch.' });
+    }
 
     const allowed = ['name', 'phone', 'email', 'branch_id'];
     const updates = {};
@@ -127,6 +136,9 @@ const remove = async (req, res) => {
   try {
     const cust = await Customer.findByPk(req.params.id);
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (req.userBranchId && cust.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Customer belongs to a different branch.' });
+    }
 
     await cust.destroy();
     return res.json({ message: 'Customer deleted.' });
@@ -144,6 +156,9 @@ const loyalty = async (req, res) => {
 
     const cust = await Customer.findByPk(req.params.id);
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (req.userBranchId && cust.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied. Customer belongs to a different branch.' });
+    }
 
     if (action === 'redeem') {
       if (cust.loyalty_points < points) {
