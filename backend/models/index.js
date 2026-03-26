@@ -27,6 +27,7 @@ Branch.hasMany(Appointment, { foreignKey: 'branch_id', as: 'appointments' });
 Branch.hasMany(Payment,     { foreignKey: 'branch_id', as: 'payments' });
 Branch.hasMany(Inventory,   { foreignKey: 'branch_id', as: 'inventory' });
 Branch.hasMany(Reminder,    { foreignKey: 'branch_id', as: 'reminders' });
+Branch.hasMany(NotificationLog, { foreignKey: 'branch_id', as: 'notificationLogs' });
 
 // ── User ──────────────────────────────────────────────────────────────────────
 User.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
@@ -81,6 +82,8 @@ Attendance.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
 // ── Reminder ──────────────────────────────────────────────────────────────────
 Reminder.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+// ── NotificationLog ───────────────────────────────────────────────────────────
+NotificationLog.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 // ── Expense ───────────────────────────────────────────────────────────────
 Expense.belongsTo(Branch, { foreignKey: 'branch_id',  as: 'branch' });
 Expense.belongsTo(User,   { foreignKey: 'created_by', as: 'creator' });

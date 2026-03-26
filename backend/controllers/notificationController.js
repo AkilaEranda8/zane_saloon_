@@ -1,6 +1,6 @@
 'use strict';
 const { Op } = require('sequelize');
-const { NotificationLog, NotificationSettings, Customer } = require('../models');
+const { NotificationLog, NotificationSettings, Customer, Branch } = require('../models');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
 
 const DEFAULT_SETTINGS = {
@@ -43,9 +43,19 @@ const getLogs = async (req, res) => {
     const { count, rows } = await NotificationLog.findAndCountAll({
       where, limit, offset,
       order: [['createdAt', 'DESC']],
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'], required: false }],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    const companyDefault = process.env.COMPANY_NAME || 'Zane Salon';
+    const data = rows.map((row) => {
+      const plain = row.get ? row.get({ plain: true }) : row;
+      return {
+        ...plain,
+        company_name: plain.branch?.name || companyDefault,
+      };
+    });
+
+    return res.json({ total: count, page, limit, data });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

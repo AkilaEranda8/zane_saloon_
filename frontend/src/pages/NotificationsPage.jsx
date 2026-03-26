@@ -6,8 +6,15 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
 
-const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points'];
-const EVENT_LABELS = { customer_registered:'Customer Registered', appointment_confirmed:'Appointment Confirmed', payment_receipt:'Payment Receipt', loyalty_points:'Loyalty Points' };
+const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points','test','review_request'];
+const EVENT_LABELS = {
+  customer_registered: 'Customer Registered',
+  appointment_confirmed: 'Appointment Confirmed',
+  payment_receipt: 'Payment Receipt',
+  loyalty_points: 'Loyalty Points',
+  test: 'Test / Offer SMS',
+  review_request: 'Review Request',
+};
 const EVENT_CHANNELS = { customer_registered:['email','sms'], appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
 const SETTINGS_KEY = {
   customer_registered_email:'customer_registered_email', customer_registered_sms:'customer_registered_sms',
@@ -267,10 +274,10 @@ export default function NotificationsPage() {
 
                     {/* Sender ID (Service ID) */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:'#94A3B8' }}>(Service ID from Sender IDs tab)</span></label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:'#94A3B8' }}>(approved Sender ID from Sender IDs tab)</span></label>
                       <input type="text" value={settings.sms_sender_id || ''}
                         onChange={e => setSettings(s => ({ ...s, sms_sender_id: e.target.value.trim() }))}
-                        placeholder="e.g. NotifyDEMO" style={inputStyle} />
+                        placeholder="e.g. NotifyDEMO / ZaneSalon" style={inputStyle} />
                     </div>
 
                     {/* Test */}
@@ -527,27 +534,31 @@ export default function NotificationsPage() {
 
         <DataTable noShell
           columns={[
-            { accessorKey:'event_type', header:'Event Type', meta:{ width:'18%' },
+            { accessorKey:'event_type', header:'Event Type', meta:{ width:'15%' },
               cell: ({ getValue }) => {
                 const t = getValue();
                 const ev = EV_COLOR[t] || { bg:'#F2F4F7', color:'#64748B' };
                 return <span style={{ padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, background:ev.bg, color:ev.color, whiteSpace:'nowrap' }}>{EVENT_LABELS[t]||t}</span>;
               }
             },
-            { id:'customer', header:'Customer', meta:{ width:'16%' },
-              accessorFn: r => r.recipient_name || r.customer_id || '',
-              cell: ({ getValue }) => <span style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{getValue()}</span>
+            { id:'company', header:'Branch / Company', meta:{ width:'14%' },
+              accessorFn: r => r.company_name || r.branch?.name || '',
+              cell: ({ getValue }) => <span style={{ fontSize:12, fontWeight:600, color:'#344054' }}>{getValue() || '—'}</span>
             },
-            { accessorKey:'channel', header:'Channel', meta:{ width:'14%' },
+            { id:'customer', header:'Customer', meta:{ width:'14%' },
+              accessorFn: r => r.customer_name || '',
+              cell: ({ getValue }) => <span style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{getValue() || '—'}</span>
+            },
+            { accessorKey:'channel', header:'Channel', meta:{ width:'12%' },
               cell: ({ getValue }) => {
                 const ch = CH_COLOR[getValue()] || { bg:'#F2F4F7', color:'#64748B', label:getValue()||'' };
                 return <span style={{ padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:600, background:ch.bg, color:ch.color }}>{ch.label}</span>;
               }
             },
-            { accessorKey:'message', header:'Message', meta:{ width:'28%' },
-              cell: ({ getValue }) => <span style={{ fontSize:12, color:'#64748B', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>{getValue()||''}</span>
+            { accessorKey:'message_preview', header:'Message', meta:{ width:'22%' },
+              cell: ({ getValue }) => <span style={{ fontSize:12, color:'#64748B', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>{getValue()||''}</span>
             },
-            { id:'sentAt', header:'Sent At', meta:{ width:'14%' },
+            { id:'sentAt', header:'Sent At', meta:{ width:'12%' },
               accessorFn: r => r.createdAt || '',
               cell: ({ getValue }) => <span style={{ fontSize:12, color:'#98A2B3', whiteSpace:'nowrap' }}>{getValue() ? new Date(getValue()).toLocaleString('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''}</span>
             },
