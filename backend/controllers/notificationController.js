@@ -1,6 +1,6 @@
 'use strict';
 const { Op } = require('sequelize');
-const { NotificationLog, NotificationSettings } = require('../models');
+const { NotificationLog, NotificationSettings, Customer } = require('../models');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
 
 const DEFAULT_SETTINGS = {
@@ -332,4 +332,74 @@ const testProvider = async (req, res) => {
   }
 };
 
-module.exports = { getLogs, getSettings, updateSettings, sendTest, testProvider };
+// ── POST /api/notifications/offer-sms ──────────────────────────────────────────
+const sendOfferSms = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.customerIds) ? req.body.customerIds : [];
+    const customerIds = ids
+      .map((v) => parseInt(v, 10))
+      .filter((v) => Number.isInteger(v) && v > 0);
+    const message = String(req.body.message || '').trim();
+
+    if (!customerIds.length) {
+      return res.status(400).json({ message: 'Select at least one customer.' });
+    }
+    if (!message) {
+      return res.status(400).json({ message: 'Message is required.' });
+    }
+    if (message.length > 480) {
+      return res.status(400).json({ message: 'Message is too long (max 480 characters).' });
+    }
+
+    const where = { id: customerIds };
+    if (req.userBranchId) where.branch_id = req.userBranchId;
+    const customers = await Customer.findAll({
+      where,
+      attributes: ['id', 'name', 'phone', 'branch_id'],
+    });
+
+    if (!customers.length) {
+      return res.status(404).json({ message: 'No matching customers found.' });
+    }
+
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const customer of customers) {
+      const phone = String(customer.phone || '').trim();
+      if (!phone) {
+        skipped++;
+        continue;
+      }
+      const result = await sendSMS({
+        to: phone,
+        message,
+        meta: {
+          customer_name: customer.name,
+          event_type: 'test',
+          branch_id: customer.branch_id || req.userBranchId || null,
+        },
+      });
+      if (!result) skipped++;
+      else if (result.status === 'failed') failed++;
+      else sent++;
+    }
+
+    return res.json({
+      message: `Offer SMS processed. Sent: ${sent}, Failed: ${failed}, Skipped: ${skipped}.`,
+      totals: {
+        requested: customerIds.length,
+        matched: customers.length,
+        sent,
+        failed,
+        skipped,
+      },
+    });
+  } catch (err) {
+    console.error('[sendOfferSms]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { getLogs, getSettings, updateSettings, sendTest, testProvider, sendOfferSms };

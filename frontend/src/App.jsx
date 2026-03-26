@@ -26,6 +26,7 @@ import BookingPage     from './pages/BookingPage';
 import WalkInPage      from './pages/WalkInPage';
 import TokenDisplayScreen from './pages/TokenDisplayScreen';
 import NotificationsPage from './pages/NotificationsPage';
+import OfferSmsPage from './pages/OfferSmsPage';
 import ExpensesPage     from './pages/ExpensesPage';
 import ReviewsPage      from './pages/ReviewsPage';
 import ReviewFormPage   from './pages/ReviewFormPage';
@@ -144,6 +145,11 @@ function AppShell() {
             <Route path="/notifications" element={
               <RoleRoute roles={['superadmin', 'admin']}>
                 <NotificationsPage />
+              </RoleRoute>
+            } />
+            <Route path="/offer-sms" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <OfferSmsPage />
               </RoleRoute>
             } />
 
