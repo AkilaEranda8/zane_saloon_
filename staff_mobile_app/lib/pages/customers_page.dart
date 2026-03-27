@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'add_customer_modal.dart';
 import '../models/customer.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
@@ -26,65 +27,44 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _showAddDialog() async {
-    final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
-    final emailController = TextEditingController();
-    final payload = await showDialog<(String, String, String)>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add Customer'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
-              ),
-              TextFormField(
-                controller: phoneController,
-                decoration: const InputDecoration(labelText: 'Phone'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Phone required' : null,
-              ),
-              TextFormField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.of(context).pop((
-                nameController.text,
-                phoneController.text,
-                emailController.text,
-              ));
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    final appState = AppStateScope.of(context);
+    List<Map<String, String>> branchOptions = const [];
+    final fixedBranchId = appState.currentUser?.branchId;
+    if (fixedBranchId == null || fixedBranchId.isEmpty) {
+      try {
+        if (appState.branches.isEmpty) {
+          await appState.loadBranches();
+        }
+        branchOptions = appState.branches;
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(appState.lastError ?? 'Failed to load branches')),
+        );
+        return;
+      }
+    } else {
+      final existing = appState.branches.firstWhere(
+        (b) => b['id'] == fixedBranchId,
+        orElse: () => {'id': fixedBranchId, 'name': 'My Branch'},
+      );
+      branchOptions = [existing];
+    }
+    if (!mounted) return;
+
+    final payload = await AddCustomerModal.show(
+      context,
+      branches: branchOptions,
+      initialBranchId: fixedBranchId,
     );
-    nameController.dispose();
-    phoneController.dispose();
-    emailController.dispose();
     if (payload == null) return;
     if (!mounted) return;
-    final appState = AppStateScope.of(context);
+
     final ok = await appState.addCustomer(
-      name: payload.$1,
-      phone: payload.$2,
-      email: payload.$3,
+      name: payload.name,
+      phone: payload.phone,
+      email: payload.email,
+      branchId: payload.branchId,
     );
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

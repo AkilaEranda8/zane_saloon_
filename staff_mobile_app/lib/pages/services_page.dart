@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'add_service_modal.dart';
 import '../state/app_state.dart';
 
 class ServicesPage extends StatefulWidget {
@@ -24,62 +25,27 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   Future<void> _addProduct() async {
-    final name = TextEditingController();
-    final category = TextEditingController(text: 'Other');
-    final price = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    final payload = await showDialog<(String, String, String)>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add Product/Service'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
-              ),
-              TextFormField(
-                controller: category,
-                decoration: const InputDecoration(labelText: 'Category'),
-              ),
-              TextFormField(
-                controller: price,
-                decoration: const InputDecoration(labelText: 'Price'),
-                keyboardType: TextInputType.number,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Price required' : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.of(context).pop((name.text, category.text, price.text));
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    final appState = AppStateScope.of(context);
+    final categorySet = <String>{};
+    for (final service in appState.services) {
+      final c = service.category.trim();
+      if (c.isNotEmpty) categorySet.add(c);
+    }
+    if (categorySet.isEmpty) {
+      categorySet.add('Other');
+    }
+    final payload = await AddServiceModal.show(
+      context,
+      categories: categorySet.toList()..sort(),
     );
-    name.dispose();
-    category.dispose();
-    price.dispose();
     if (payload == null) return;
     if (!mounted) return;
-    final appState = AppStateScope.of(context);
     final ok = await appState.addService(
-      name: payload.$1,
-      category: payload.$2,
-      price: payload.$3,
+      name: payload.name,
+      category: payload.category,
+      durationMinutes: payload.durationMinutes,
+      price: payload.price,
+      description: payload.description,
     );
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,6 +82,9 @@ class _ServicesPageState extends State<ServicesPage> {
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(child: Text('Failed to load services.'));
           }
           if (appState.services.isEmpty) {
             return const Center(child: Text('No products/services found.'));

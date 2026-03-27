@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment } = require('../models');
+const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
@@ -20,6 +20,37 @@ const list = async (req, res) => {
 
     const where = getBranchWhere(req);
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
+
+    // If the staff table is empty for the selected scope, bootstrap from active users
+    // so mobile clients can still load assignable staff members.
+    const existingCount = await Staff.count({ where });
+    if (existingCount === 0) {
+      const userWhere = {
+        is_active: true,
+        role: { [Op.in]: ['staff', 'manager', 'admin'] },
+      };
+      if (where.branch_id !== undefined) {
+        userWhere.branch_id = where.branch_id;
+      }
+
+      const users = await User.findAll({
+        where: userWhere,
+        attributes: ['name', 'branch_id', 'role', 'is_active'],
+      });
+
+      if (users.length) {
+        await Staff.bulkCreate(
+          users
+            .filter((u) => !!u.branch_id)
+            .map((u) => ({
+              name: u.name,
+              branch_id: u.branch_id,
+              role_title: u.role,
+              is_active: u.is_active,
+            })),
+        );
+      }
+    }
 
     const { count, rows } = await Staff.findAndCountAll({
       where,

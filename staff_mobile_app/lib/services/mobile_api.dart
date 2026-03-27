@@ -4,8 +4,10 @@ import 'package:http/http.dart' as http;
 
 import '../models/appointment.dart';
 import '../models/customer.dart';
+import '../models/payment_record.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
+import '../models/walkin_entry.dart';
 
 class AppointmentListResult {
   AppointmentListResult({
@@ -143,7 +145,9 @@ class MobileApi {
     required String token,
     required String name,
     required String category,
+    required String durationMinutes,
     required String price,
+    required String description,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/services'),
@@ -151,8 +155,9 @@ class MobileApi {
       body: jsonEncode({
         'name': name.trim(),
         'category': category.trim().isEmpty ? 'Other' : category.trim(),
+        'duration_minutes': int.tryParse(durationMinutes.trim()) ?? 30,
         'price': double.tryParse(price.trim()) ?? 0,
-        'duration_minutes': 30,
+        'description': description.trim().isEmpty ? null : description.trim(),
       }),
     );
     final body = _decode(response.body);
@@ -338,6 +343,130 @@ class MobileApi {
     }
   }
 
+  Future<List<PaymentRecord>> fetchPayments({
+    required String token,
+    String? branchId,
+    String? month,
+    int limit = 200,
+  }) async {
+    final qp = <String, String>{
+      'limit': '$limit',
+      if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      if (month != null && month.isNotEmpty) 'month': month,
+    };
+    final uri = Uri.parse('$baseUrl/api/payments').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Payments load failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    return list
+        .whereType<Map>()
+        .map((row) => PaymentRecord.fromJson(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<void> createManualPayment({
+    required String token,
+    required String branchId,
+    required String serviceId,
+    String? staffId,
+    String? customerId,
+    String? customerName,
+    required String totalAmount,
+    required String loyaltyDiscount,
+    required String method,
+    required String paidAmount,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/payments'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'service_id': int.tryParse(serviceId) ?? serviceId,
+        if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
+        if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+        if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
+        'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
+        'splits': [
+          {
+            'method': method,
+            'amount': double.tryParse(paidAmount.trim()) ?? 0,
+          },
+        ],
+        'total_amount': double.tryParse(totalAmount.trim()) ?? 0,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Payment create failed');
+    }
+  }
+
+  Future<List<WalkInEntry>> fetchWalkIns({
+    required String token,
+    required String branchId,
+    String? date,
+  }) async {
+    final qp = <String, String>{
+      'branchId': branchId,
+      if (date != null && date.isNotEmpty) 'date': date,
+    };
+    final uri = Uri.parse('$baseUrl/api/walkin').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decodeList(response.body);
+    if (response.statusCode >= 400) {
+      final mapBody = _decode(response.body);
+      throw Exception(mapBody['message'] ?? 'Walk-in queue load failed');
+    }
+    return body
+        .whereType<Map>()
+        .map((row) => WalkInEntry.fromJson(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<void> createWalkInCheckIn({
+    required String token,
+    required String branchId,
+    required String customerName,
+    required String serviceId,
+    String? phone,
+    String? note,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/walkin/checkin'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'customerName': customerName.trim(),
+        'branchId': int.tryParse(branchId) ?? branchId,
+        'serviceId': int.tryParse(serviceId) ?? serviceId,
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Walk-in check-in failed');
+    }
+  }
+
+  Future<void> updateWalkInStatus({
+    required String token,
+    required String walkInId,
+    required String status,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/walkin/$walkInId/status'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'status': status}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Walk-in status update failed');
+    }
+  }
+
   Map<String, String> _authHeaders(String token) => {
     'Content-Type': 'application/json',
     'Authorization': 'Bearer $token',
@@ -348,6 +477,16 @@ class MobileApi {
     final parsed = jsonDecode(raw);
     if (parsed is Map<String, dynamic>) return parsed;
     return {};
+  }
+
+  List<dynamic> _decodeList(String raw) {
+    if (raw.trim().isEmpty) return const [];
+    final parsed = jsonDecode(raw);
+    if (parsed is List) return parsed;
+    if (parsed is Map<String, dynamic> && parsed['data'] is List) {
+      return parsed['data'] as List;
+    }
+    return const [];
   }
 
   String _extractTokenFromCookie(String setCookie) {

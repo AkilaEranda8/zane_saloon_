@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/app_item.dart';
 import '../models/appointment.dart';
 import '../models/customer.dart';
+import '../models/payment_record.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../models/staff_user.dart';
+import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
 import '../utils/appointment_notes.dart';
 
@@ -70,6 +72,11 @@ class AppState extends ChangeNotifier {
         authToken: token,
         permissions: _permissionsFromRole(role),
       );
+      try {
+        await loadStaffList();
+      } catch (_) {
+        // Keep login successful even if staff list fails to preload.
+      }
       notifyListeners();
       return true;
     } catch (e) {
@@ -153,6 +160,7 @@ class AppState extends ChangeNotifier {
     required String name,
     required String phone,
     required String email,
+    String? branchId,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -160,12 +168,13 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
+      final effectiveBranchId = (branchId ?? _currentUser?.branchId)?.trim();
       final customer = await _api.createCustomer(
         token: token,
         name: name,
         phone: phone,
         email: email,
-        branchId: _currentUser?.branchId,
+        branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty) ? null : effectiveBranchId,
       );
       _customers.insert(0, customer);
       notifyListeners();
@@ -194,10 +203,28 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load staff).');
     }
-    return _api.fetchStaff(
+    final loaded = await _api.fetchStaff(
       token: token,
       branchId: branchId ?? _currentUser?.branchId,
     );
+    _staffUsers
+      ..clear()
+      ..addAll(
+        loaded.map(
+          (staff) => StaffUser(
+            id: staff.id,
+            username: staff.name,
+            password: '',
+            displayName: staff.name,
+            isActive: true,
+            role: 'staff',
+            branchId: staff.branchId.isEmpty ? null : staff.branchId,
+            permissions: _permissionsFromRole('staff'),
+          ),
+        ),
+      );
+    notifyListeners();
+    return loaded;
   }
 
   Future<List<Map<String, String>>> loadBranches() async {
@@ -221,7 +248,9 @@ class AppState extends ChangeNotifier {
   Future<bool> addService({
     required String name,
     required String category,
+    required String durationMinutes,
     required String price,
+    required String description,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -233,9 +262,127 @@ class AppState extends ChangeNotifier {
         token: token,
         name: name,
         category: category,
+        durationMinutes: durationMinutes,
         price: price,
+        description: description,
       );
       await loadServices();
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<PaymentRecord>> loadPayments({
+    String? branchId,
+    String? month,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load payments).');
+    }
+    return _api.fetchPayments(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+      month: month,
+    );
+  }
+
+  Future<bool> addManualPayment({
+    required String branchId,
+    required String serviceId,
+    String? staffId,
+    String? customerId,
+    String? customerName,
+    required String totalAmount,
+    required String loyaltyDiscount,
+    required String method,
+    required String paidAmount,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot add payment).';
+      return false;
+    }
+    try {
+      await _api.createManualPayment(
+        token: token,
+        branchId: branchId,
+        serviceId: serviceId,
+        staffId: staffId,
+        customerId: customerId,
+        customerName: customerName,
+        totalAmount: totalAmount,
+        loyaltyDiscount: loyaltyDiscount,
+        method: method,
+        paidAmount: paidAmount,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<WalkInEntry>> loadWalkIns({
+    required String branchId,
+    String? date,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load walk-ins).');
+    }
+    return _api.fetchWalkIns(
+      token: token,
+      branchId: branchId,
+      date: date,
+    );
+  }
+
+  Future<bool> addWalkIn({
+    required String branchId,
+    required String customerName,
+    required String serviceId,
+    String? phone,
+    String? note,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot add walk-in).';
+      return false;
+    }
+    try {
+      await _api.createWalkInCheckIn(
+        token: token,
+        branchId: branchId,
+        customerName: customerName,
+        serviceId: serviceId,
+        phone: phone,
+        note: note,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> updateWalkInStatus({
+    required String walkInId,
+    required String status,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update walk-in status).';
+      return false;
+    }
+    try {
+      await _api.updateWalkInStatus(
+        token: token,
+        walkInId: walkInId,
+        status: status,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
