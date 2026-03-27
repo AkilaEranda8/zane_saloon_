@@ -60,7 +60,9 @@ class AppState extends ChangeNotifier {
       }
       final user = Map<String, dynamic>.from(body['user'] as Map? ?? {});
       final role = '${user['role'] ?? 'staff'}';
-      final branchId = '${user['branchId'] ?? ''}';
+      final branchMap = user['branch'] is Map ? Map<String, dynamic>.from(user['branch']) : const <String, dynamic>{};
+      final rawBranchId = user['branchId'] ?? user['branch_id'] ?? branchMap['id'];
+      final branchId = '${rawBranchId ?? ''}'.trim();
       _currentUser = StaffUser(
         id: '${user['id'] ?? ''}',
         username: '${user['username'] ?? username}',
@@ -68,7 +70,7 @@ class AppState extends ChangeNotifier {
         displayName: '${user['name'] ?? user['username'] ?? 'Staff'}',
         isActive: true,
         role: role,
-        branchId: branchId.isEmpty ? null : branchId,
+        branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null') ? null : branchId,
         authToken: token,
         permissions: _permissionsFromRole(role),
       );
