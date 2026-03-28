@@ -1,26 +1,64 @@
-import paramiko, sys
+"""
+Deploy to VPS over SSH (Paramiko). Run from repo root:
 
-host = '157.180.113.249'
-user = 'root'
+  pip install paramiko
+  python _deploy.py
 
-# Try possible passwords
-passwords = [
-    'qnuwjheuweugdsjsds',
-    'kjsdksdjiereihshdks',
-]
+Optional env:
+  DEPLOY_HOST       default 157.180.113.249
+  DEPLOY_USER       default root
+  DEPLOY_PATH       default /root/xanesalon  (clone dir on server)
+  DEPLOY_SSH_PASSWORD  if set, only this password is tried
+"""
+
+import io
+import os
+import sys
+
+# Avoid UnicodeEncodeError on Windows when Docker prints ✓ etc.
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(
+        sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True
+    )
+if hasattr(sys.stderr, "buffer"):
+    sys.stderr = io.TextIOWrapper(
+        sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True
+    )
+
+try:
+    import paramiko
+except ImportError:
+    print("Install paramiko:  pip install paramiko", file=sys.stderr)
+    sys.exit(1)
+
+host = os.environ.get("DEPLOY_HOST", "157.180.113.249")
+user = os.environ.get("DEPLOY_USER", "root")
+app_path = os.environ.get("DEPLOY_PATH", "/root/xanesalon")
+
+# Try env password first, then fallbacks (prefer setting DEPLOY_SSH_PASSWORD locally)
+passwords = []
+if os.environ.get("DEPLOY_SSH_PASSWORD"):
+    passwords.append(os.environ["DEPLOY_SSH_PASSWORD"])
+passwords.extend(
+    p
+    for p in (
+        "qnuwjheuweugdsjsds",
+        "kjsdksdjiereihshdks",
+    )
+    if p not in passwords
+)
 
 deploy_cmd = (
-    # Rename old dir if it exists, clone fresh if neither exists
-    "if [ -d /root/zane_salon ] && [ ! -d /root/xanesalon ]; then "
-    "  mv /root/zane_salon /root/xanesalon && echo '>>> Renamed zane_salon -> xanesalon'; "
+    f"if [ -d /root/zane_salon ] && [ ! -d {app_path} ]; then "
+    f"  mv /root/zane_salon {app_path} && echo '>>> Renamed zane_salon -> {app_path}'; "
     "fi && "
-    "if [ ! -d /root/xanesalon ]; then "
-    "  git clone https://github.com/AkilaEranda8/zane_saloon_.git /root/xanesalon && echo '>>> Cloned fresh'; "
+    f"if [ ! -d {app_path} ]; then "
+    "  git clone https://github.com/AkilaEranda8/zane_saloon_.git "
+    f"{app_path} && echo '>>> Cloned fresh'; "
     "fi && "
-    # Kill any container using port 5001, then bring everything down cleanly
     "docker ps -q | xargs -r docker stop 2>/dev/null || true && "
     "docker ps -aq | xargs -r docker rm 2>/dev/null || true && "
-    "cd /root/xanesalon && "
+    f"cd {app_path} && "
     "git fetch origin master && "
     "git reset --hard origin/master && "
     "docker compose up -d --build && "
@@ -35,30 +73,47 @@ client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 connected = False
 for password in passwords:
     try:
-        client.connect(host, port=22, username=user, password=password, timeout=10)
-        print(f'Connected with password: {password[:4]}****')
+        client.connect(host, port=22, username=user, password=password, timeout=30)
+        print(f"Connected to {user}@{host} (password ok)")
         connected = True
         break
     except paramiko.AuthenticationException:
-        print(f'Failed: {password[:4]}****')
+        print(f"Auth failed (tried ****)")
     except Exception as e:
-        print(f'Error: {e}')
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 if not connected:
-    print('All passwords failed. Please provide the correct SSH root password.')
+    print(
+        "SSH login failed. Set DEPLOY_SSH_PASSWORD or fix credentials.",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 try:
-    stdin, stdout, stderr = client.exec_command(deploy_cmd, get_pty=True, timeout=300)
-    for line in iter(stdout.readline, ''):
-        print(line, end='', flush=True, file=open(sys.stdout.fileno(), mode='w', encoding='utf-8', errors='replace', closefd=False))
+    # Long docker builds: no short timeout on channel
+    stdin, stdout, stderr = client.exec_command(deploy_cmd, get_pty=True)
+    stdin.close()
+
+    def _copy(stream, out):
+        for line in iter(stream.readline, ""):
+            out.write(line)
+            out.flush()
+
+    import threading
+
+    t_err = threading.Thread(target=_copy, args=(stderr, sys.stderr))
+    t_err.daemon = True
+    t_err.start()
+    _copy(stdout, sys.stdout)
+    t_err.join(timeout=1)
+
     exit_code = stdout.channel.recv_exit_status()
-    print(f'\nExit code: {exit_code}')
+    print(f"\nExit code: {exit_code}", flush=True)
     if exit_code != 0:
         sys.exit(1)
 except Exception as e:
-    print(f'Error during deploy: {e}', file=sys.stderr)
+    print(f"Error during deploy: {e}", file=sys.stderr)
     sys.exit(1)
 finally:
     client.close()
