@@ -5,11 +5,25 @@ import '../models/appointment.dart';
 import '../models/customer.dart';
 import '../models/payment_record.dart';
 import '../models/salon_service.dart';
+import '../models/staff_commission_summary.dart';
 import '../models/staff_member.dart';
 import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
 import '../utils/appointment_notes.dart';
+
+String _userFacingApiError(Object e) {
+  final s = e.toString();
+  if (s.contains('SocketException') ||
+      s.contains('Failed host lookup') ||
+      s.contains('Connection refused') ||
+      s.contains('Connection reset') ||
+      s.contains('timed out')) {
+    return 'Cannot reach the server. Check your internet connection, '
+        'or configure API_BASE_URL for a local backend.';
+  }
+  return s.replaceFirst('Exception: ', '');
+}
 
 class AppState extends ChangeNotifier {
   AppState()
@@ -82,7 +96,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _lastError = e.toString().replaceFirst('Exception: ', '');
+      _lastError = _userFacingApiError(e);
       return false;
     }
   }
@@ -299,6 +313,44 @@ class AppState extends ChangeNotifier {
     return _api.fetchMyCommission(token: token, month: month);
   }
 
+  /// All staff monthly totals (GET /api/staff/commission). Branch-scoped for staff/manager; all branches for superadmin/admin unless [branchId] is set.
+  Future<List<StaffCommissionSummary>> loadStaffCommissionSummary({
+    String? month,
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load commission).');
+    }
+    final m = month ?? _commissionMonthDefault();
+    return _api.fetchStaffCommissionSummary(
+      token: token,
+      month: m,
+      branchId: branchId,
+    );
+  }
+
+  /// Payment-level rows for one staff (GET /api/staff/:id/commission).
+  Future<MyCommissionResult> loadStaffCommissionReport({
+    required String staffId,
+    String? month,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load commission).');
+    }
+    return _api.fetchStaffCommissionReport(
+      token: token,
+      staffId: staffId,
+      month: month ?? _commissionMonthDefault(),
+    );
+  }
+
+  String _commissionMonthDefault() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}';
+  }
+
   Future<bool> addManualPayment({
     required String branchId,
     required String serviceId,
@@ -358,6 +410,7 @@ class AppState extends ChangeNotifier {
     required String serviceId,
     String? phone,
     String? note,
+    String? staffId,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -372,7 +425,27 @@ class AppState extends ChangeNotifier {
         serviceId: serviceId,
         phone: phone,
         note: note,
+        staffId: staffId,
       );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> assignWalkInStaff({
+    required String walkInId,
+    required String staffId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot assign staff).';
+      return false;
+    }
+    try {
+      await _api.assignWalkInStaff(
+          token: token, walkInId: walkInId, staffId: staffId);
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');

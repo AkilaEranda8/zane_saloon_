@@ -305,17 +305,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget _buildBrand() {
     return Column(
       children: [
-        // Logo icon
+        // Logo image
         Container(
-          width: 96,
-          height: 96,
+          width: 110,
+          height: 110,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFE0B585), Color(0xFFC9956C), Color(0xFFAA7348)],
-            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x70C9956C),
@@ -330,22 +325,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ],
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 74,
-                height: 74,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    width: 1,
-                  ),
-                ),
-              ),
-              const Icon(Icons.content_cut_rounded, color: Colors.white, size: 38),
-            ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: Image.asset(
+              'assets/images/logo.png',
+              fit: BoxFit.cover,
+            ),
           ),
         ),
         const SizedBox(height: 18),

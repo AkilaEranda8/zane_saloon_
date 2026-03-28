@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/appointment.dart';
 import '../models/commission_record.dart';
+import '../models/staff_commission_summary.dart';
 import '../models/customer.dart';
 import '../models/payment_record.dart';
 import '../models/salon_service.dart';
@@ -457,17 +458,121 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Commission load failed');
     }
-    final list = (body['data'] as List? ?? const []);
-    final staffMap = body['staff'] is Map ? Map<String, dynamic>.from(body['staff']) : const <String, dynamic>{};
+    final list = _commissionRowsFromBody(body);
+    final staffMap = body['staff'] is Map
+        ? Map<String, dynamic>.from(body['staff'])
+        : const <String, dynamic>{};
     final totalRaw = body['total'];
+    final records = <CommissionRecord>[];
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        records.add(CommissionRecord.fromJson(
+            Map<String, dynamic>.from(item)));
+      } catch (_) {
+        // Skip malformed rows instead of failing the whole response.
+      }
+    }
     return MyCommissionResult(
-      total: totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0,
-      records: list
-          .whereType<Map>()
-          .map((row) => CommissionRecord.fromJson(Map<String, dynamic>.from(row)))
-          .toList(),
-      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
+      total: totalRaw is num
+          ? totalRaw.toDouble()
+          : double.tryParse('$totalRaw') ?? 0,
+      records: records,
+      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty
+          ? null
+          : '${staffMap['name']}',
     );
+  }
+
+  /// All staff commission totals for the month (admin / manager / superadmin).
+  Future<List<StaffCommissionSummary>> fetchStaffCommissionSummary({
+    required String token,
+    required String month,
+    String? branchId,
+  }) async {
+    final parts = month.split('-');
+    if (parts.length < 2) {
+      throw Exception('Invalid month format');
+    }
+    final year = parts[0];
+    final m = parts[1].padLeft(2, '0');
+    final qp = <String, String>{
+      'month': m,
+      'year': year,
+      if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+    };
+    final uri = Uri.parse('$baseUrl/api/staff/commission')
+        .replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Commission summary failed');
+    }
+    final parsed = jsonDecode(response.body);
+    List<dynamic> list;
+    if (parsed is List) {
+      list = parsed;
+    } else if (parsed is Map<String, dynamic> && parsed['data'] is List) {
+      list = parsed['data'] as List<dynamic>;
+    } else {
+      return const [];
+    }
+    return list
+        .whereType<Map>()
+        .map((e) => StaffCommissionSummary.fromJson(
+            Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Payment-level commission rows for a specific staff id.
+  Future<MyCommissionResult> fetchStaffCommissionReport({
+    required String token,
+    required String staffId,
+    String? month,
+  }) async {
+    final qp = <String, String>{
+      if (month != null && month.isNotEmpty) 'month': month,
+    };
+    final uri = Uri.parse('$baseUrl/api/staff/$staffId/commission').replace(
+      queryParameters: qp.isEmpty ? null : qp,
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Commission report failed');
+    }
+    final list = _commissionRowsFromBody(body);
+    final staffMap = body['staff'] is Map
+        ? Map<String, dynamic>.from(body['staff'])
+        : const <String, dynamic>{};
+    final totalRaw = body['total'];
+    final records = <CommissionRecord>[];
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        records.add(CommissionRecord.fromJson(
+            Map<String, dynamic>.from(item)));
+      } catch (_) {}
+    }
+    return MyCommissionResult(
+      total: totalRaw is num
+          ? totalRaw.toDouble()
+          : double.tryParse('$totalRaw') ?? 0,
+      records: records,
+      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty
+          ? null
+          : '${staffMap['name']}',
+    );
+  }
+
+  /// Accepts `data`, `records`, or a top-level JSON array from the API.
+  List<dynamic> _commissionRowsFromBody(Map<String, dynamic> body) {
+    final data = body['data'];
+    if (data is List) return data;
+    final records = body['records'];
+    if (records is List) return records;
+    if (body['payments'] is List) return body['payments'] as List;
+    return const [];
   }
 
   Future<void> createWalkInCheckIn({
@@ -477,6 +582,7 @@ class MobileApi {
     required String serviceId,
     String? phone,
     String? note,
+    String? staffId,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/walkin/checkin'),
@@ -487,11 +593,31 @@ class MobileApi {
         'serviceId': int.tryParse(serviceId) ?? serviceId,
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        if (staffId != null && staffId.trim().isNotEmpty)
+          'staffId': int.tryParse(staffId) ?? staffId,
       }),
     );
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Walk-in check-in failed');
+    }
+  }
+
+  Future<void> assignWalkInStaff({
+    required String token,
+    required String walkInId,
+    required String staffId,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/walkin/$walkInId/assign'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'staffId': int.tryParse(staffId) ?? staffId,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Staff assignment failed');
     }
   }
 
