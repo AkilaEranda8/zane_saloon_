@@ -5,9 +5,12 @@ import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../models/walkin_entry.dart';
 import '../services/walkin_queue_cache.dart';
+import '../services/walkin_queue_socket.dart';
 import '../state/app_state.dart';
+import '../utils/appointment_notes.dart';
 import 'add_walkin_modal.dart';
 import 'add_walkin_payment_modal.dart';
+import 'edit_walkin_modal.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _forest  = Color(0xFF1B3A2D);
@@ -41,6 +44,12 @@ class WalkInPage extends StatefulWidget {
   State<WalkInPage> createState() => _WalkInPageState();
 }
 
+List<WalkInEntry> _sortedWalkIns(List<WalkInEntry> raw) {
+  final list = List<WalkInEntry>.from(raw);
+  WalkInEntry.sortNewestFirst(list);
+  return list;
+}
+
 class _WalkInPageState extends State<WalkInPage> {
   Future<void>? _future;
   bool _fromCache = false;
@@ -48,6 +57,14 @@ class _WalkInPageState extends State<WalkInPage> {
   List<SalonService>        _services  = const [];
   List<Map<String, String>> _branches  = const [];
   List<StaffMember>         _staffList = const [];
+  WalkInQueueSocket? _queueSocket;
+  String? _activeBranchId;
+
+  @override
+  void dispose() {
+    _queueSocket?.disconnect();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -67,6 +84,8 @@ class _WalkInPageState extends State<WalkInPage> {
 
     if (branches.isEmpty) {
       if (!mounted) return;
+      _queueSocket?.disconnect();
+      _activeBranchId = null;
       setState(() {
         _services = services;
         _branches = [];
@@ -88,15 +107,54 @@ class _WalkInPageState extends State<WalkInPage> {
       fromCache = true;
     }
     if (!mounted) return;
+    _activeBranchId = branchId;
     setState(() {
       _services = services;
       _branches = branches;
-      _walkIns = queue;
+      _walkIns = _sortedWalkIns(queue);
       _fromCache = fromCache;
     });
+    _bindQueueSocket(branchId);
   }
 
-  void _refresh() => setState(() => _future = _load());
+  void _bindQueueSocket(String branchId) {
+    final app = AppStateScope.of(context);
+    final token = app.currentUser?.authToken;
+    if (token == null || token.isEmpty || branchId.isEmpty) return;
+    _queueSocket ??= WalkInQueueSocket();
+    _queueSocket!.connect(
+      apiBaseUrl: app.apiBaseUrl,
+      token: token,
+      branchId: branchId,
+      onQueueUpdated: () {
+        if (!mounted) return;
+        _silentReloadQueue();
+      },
+    );
+  }
+
+  Future<void> _silentReloadQueue() async {
+    final bid = _activeBranchId;
+    if (bid == null || bid.isEmpty || !mounted) return;
+    final app = AppStateScope.of(context);
+    try {
+      final queue = await app.loadWalkIns(branchId: bid);
+      await WalkInQueueCache.save(bid, queue);
+      if (!mounted) return;
+      setState(() {
+        _walkIns = _sortedWalkIns(queue);
+        _fromCache = false;
+      });
+    } catch (_) {
+      /* keep current list */
+    }
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _load();
+    });
+  }
 
   Future<void> _openAdd() async {
     final app = AppStateScope.of(context);
@@ -118,16 +176,6 @@ class _WalkInPageState extends State<WalkInPage> {
     if (customers.isEmpty) {
       try { customers = await app.loadCustomers(); } catch (_) {}
     }
-
-    // Load staff list for the branch
-    var staff = _staffList;
-    if (staff.isEmpty) {
-      try {
-        staff = await app.loadStaffList(
-            branchId: uid?.isNotEmpty == true ? uid : null);
-      } catch (_) {}
-      if (mounted) setState(() => _staffList = staff);
-    }
     if (!mounted) return;
 
     final payload = await AddWalkInModal.show(
@@ -135,9 +183,7 @@ class _WalkInPageState extends State<WalkInPage> {
       branches: branches,
       services: _services,
       customers: customers,
-      staffList: staff,
       initialBranchId: uid,
-      onBranchChanged: (branchId) => app.staffMembersForBranch(branchId),
     );
     if (payload == null || !mounted) return;
 
@@ -148,7 +194,6 @@ class _WalkInPageState extends State<WalkInPage> {
       serviceIds:   payload.serviceIds,
       phone:        payload.phone,
       note:         payload.note,
-      staffId:      payload.staffId,
     );
     if (!mounted) return;
     if (created == null) {
@@ -156,12 +201,94 @@ class _WalkInPageState extends State<WalkInPage> {
       return;
     }
     setState(() {
-      _walkIns = [
+      _walkIns = _sortedWalkIns([
         created,
         ..._walkIns.where((w) => w.id != created.id),
-      ];
+      ]);
     });
     await WalkInQueueCache.save(payload.branchId, _walkIns);
+    _refresh();
+  }
+
+  Future<void> _editWalkIn(WalkInEntry e) async {
+    final app = AppStateScope.of(context);
+    var customers = app.customers;
+    if (customers.isEmpty) {
+      try {
+        customers = await app.loadCustomers();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    final payload = await EditWalkInModal.show(
+      context,
+      entry: e,
+      branches: _branches,
+      services: _services,
+      customers: customers,
+    );
+    if (payload == null || !mounted) return;
+    final updated = await app.updateWalkInEntry(
+      walkInId: e.id,
+      customerName: payload.customerName,
+      serviceId: payload.serviceId,
+      serviceIds: payload.serviceIds,
+      phone: payload.phone,
+      note: payload.note,
+    );
+    if (!mounted) return;
+    if (updated == null) {
+      _toast(app.lastError ?? 'Update failed');
+      return;
+    }
+    setState(() {
+      _walkIns = _sortedWalkIns([
+        for (final w in _walkIns)
+          if (w.id == updated.id) updated else w,
+      ]);
+    });
+    await WalkInQueueCache.save(e.branchId, _walkIns);
+    _toast('Walk-in updated');
+  }
+
+  Future<void> _cancelWalkIn(WalkInEntry e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel walk-in?'),
+        content: Text(
+          e.customerName.trim().isNotEmpty
+              ? 'This will mark ${e.customerName.trim()} as cancelled.'
+              : 'This walk-in will be marked as cancelled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes, cancel'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final app = AppStateScope.of(context);
+    final success = await app.updateWalkInStatus(
+      walkInId: e.id,
+      status: 'cancelled',
+    );
+    if (!mounted) return;
+    if (!success) {
+      _toast(app.lastError ?? 'Could not cancel');
+      return;
+    }
+    _toast('Walk-in cancelled');
     _refresh();
   }
 
@@ -197,14 +324,6 @@ class _WalkInPageState extends State<WalkInPage> {
     _refresh();
   }
 
-  Future<void> _startService(WalkInEntry e) async {
-    final app = AppStateScope.of(context);
-    final ok = await app.updateWalkInStatus(walkInId: e.id, status: 'serving');
-    if (!mounted) return;
-    if (!ok) _toast(app.lastError ?? 'Failed to update status');
-    _refresh();
-  }
-
   Future<void> _collectPayment(WalkInEntry e) async {
     final app = AppStateScope.of(context);
     final svc = _services.firstWhere(
@@ -216,17 +335,25 @@ class _WalkInPageState extends State<WalkInPage> {
     final initialPay = e.totalAmount > 0
         ? e.totalAmount.toStringAsFixed(0)
         : (svc.price > 0 ? svc.price.toStringAsFixed(0) : '');
+    final preIds = e.orderedServiceIds;
+    final selectedForModal = preIds.isNotEmpty
+        ? preIds
+        : (e.serviceId.isNotEmpty ? [e.serviceId] : <String>[]);
     final payload = await AddWalkInPaymentModal.show(
       context,
       customerName: e.customerName,
-      serviceName:  e.serviceName,
+      serviceName: e.serviceName,
       initialAmount: initialPay,
+      services: _services,
+      selectedServiceIds: selectedForModal,
     );
     if (payload == null || !mounted) return;
 
+    final payIds = payload.serviceIds;
     final ok = await app.addManualPayment(
       branchId:       e.branchId,
-      serviceId:      e.serviceId,
+      serviceId:      payIds.isNotEmpty ? payIds.first : e.serviceId,
+      serviceIds:     payIds.length > 1 ? payIds : null,
       staffId:        e.staffId.isEmpty ? null : e.staffId,
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
@@ -237,6 +364,38 @@ class _WalkInPageState extends State<WalkInPage> {
     );
     if (!mounted) return;
     if (!ok) { _toast(app.lastError ?? 'Payment failed'); return; }
+
+    // Persist services/total on walk-in row (DB + queue) so list matches payment.
+    final orderedIds = payIds.isNotEmpty
+        ? payIds
+        : (e.serviceId.isNotEmpty ? [e.serviceId] : <String>[]);
+    if (orderedIds.isNotEmpty) {
+      final extraNames = orderedIds.length <= 1
+          ? <String>[]
+          : orderedIds
+              .skip(1)
+              .map((sid) {
+                for (final s in _services) {
+                  if (s.id == sid) return s.name;
+                }
+                return '';
+              })
+              .where((n) => n.trim().isNotEmpty)
+              .toList();
+      final noteSync = AppointmentNotes.combineNotes(e.note, extraNames);
+      final synced = await app.updateWalkInEntry(
+        walkInId: e.id,
+        customerName: e.customerName,
+        serviceId: orderedIds.first,
+        serviceIds: orderedIds,
+        phone: e.phone,
+        note: noteSync,
+      );
+      if (!mounted) return;
+      if (synced == null) {
+        _toast(app.lastError ?? 'Payment recorded; walk-in could not sync');
+      }
+    }
 
     await app.updateWalkInStatus(walkInId: e.id, status: 'completed');
     if (!mounted) return;
@@ -363,9 +522,10 @@ class _WalkInPageState extends State<WalkInPage> {
             itemCount: _walkIns.length,
                 itemBuilder: (ctx, i) => _WalkInCard(
                   entry: _walkIns[i],
-                  onStart:   () => _startService(_walkIns[i]),
+                  onEdit:    () => _editWalkIn(_walkIns[i]),
                   onPayment: () => _collectPayment(_walkIns[i]),
                   onAssign:  () => _assignStaff(_walkIns[i]),
+                  onCancel:  () => _cancelWalkIn(_walkIns[i]),
                 ),
               ),
             ),
@@ -582,12 +742,13 @@ class _StatPill extends StatelessWidget {
 class _WalkInCard extends StatelessWidget {
   const _WalkInCard({
     required this.entry,
-    required this.onStart,
+    required this.onEdit,
     required this.onPayment,
     required this.onAssign,
+    required this.onCancel,
   });
   final WalkInEntry entry;
-  final VoidCallback onStart, onPayment, onAssign;
+  final VoidCallback onEdit, onPayment, onAssign, onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -596,6 +757,7 @@ class _WalkInCard extends StatelessWidget {
     final isWaiting   = e.status == 'waiting';
     final isServing   = e.status == 'serving';
     final isDone      = e.status == 'completed' || e.status == 'cancelled';
+    final canEdit     = isWaiting || isServing;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -628,11 +790,22 @@ class _WalkInCard extends StatelessWidget {
                   blurRadius: 8, offset: const Offset(0, 3))],
               ),
               child: Center(
-                child: Text(
-                  e.token.isNotEmpty ? e.token : '—',
-                  style: const TextStyle(
-                    color: Colors.white, fontSize: 13,
-                    fontWeight: FontWeight.w900)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      e.token.isNotEmpty ? e.token : '—',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
 
@@ -765,52 +938,99 @@ class _WalkInCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: 14, vertical: 10),
             child: Row(children: [
-              // Assign Staff button (waiting, no staff yet)
-              if (isWaiting && e.staffName.isEmpty) ...[
+              if (canEdit) ...[
                 GestureDetector(
-                  onTap: onAssign,
+                  onTap: onEdit,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                        horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
+                      color: _surface,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: const Color(0xFF86EFAC), width: 1)),
+                      border: Border.all(color: _border),
+                    ),
                     child: const Row(
-                        mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.badge_outlined,
-                          size: 14, color: Color(0xFF16A34A)),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                      Icon(Icons.edit_outlined,
+                          size: 14, color: _forest),
                       SizedBox(width: 5),
-                      Text('Assign Staff',
+                      Text('Edit',
                         style: TextStyle(
-                          color: Color(0xFF16A34A), fontSize: 12.5,
+                          color: _forest, fontSize: 12.5,
                           fontWeight: FontWeight.w700)),
                     ]),
                   ),
                 ),
                 const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onCancel,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: const Color(0xFFFECDD3), width: 1),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cancel_outlined,
+                            size: 14, color: Color(0xFFDC2626)),
+                        SizedBox(width: 5),
+                        Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: Color(0xFFDC2626),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
               ],
               const Spacer(),
-              if (isWaiting)
+              // Right side (same slot as removed Start Service): assign staff
+              if (isWaiting && e.staffName.isEmpty)
                 GestureDetector(
-                  onTap: onStart,
+                  onTap: onAssign,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFDBEAFE),
-                      borderRadius: BorderRadius.circular(10)),
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: const Color(0xFF86EFAC), width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
                     child: const Row(
-                        mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.play_arrow_rounded,
-                          size: 15, color: Color(0xFF1E40AF)),
-                      SizedBox(width: 5),
-                      Text('Start Service',
-                        style: TextStyle(
-                          color: Color(0xFF1E40AF), fontSize: 13,
-                          fontWeight: FontWeight.w800)),
-                    ]),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.badge_outlined,
+                            size: 15, color: Color(0xFF16A34A)),
+                        SizedBox(width: 6),
+                        Text(
+                          'Assign Staff',
+                          style: TextStyle(
+                            color: Color(0xFF16A34A),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               if (isServing)

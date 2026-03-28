@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/appointment.dart';
+import '../models/salon_service.dart';
 import '../state/app_state.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -36,7 +37,7 @@ class _CalendarPageState extends State<CalendarPage> {
         children: [
           _monthCard(),
           const SizedBox(height: 14),
-          _dayScheduleCard(dayAppointments),
+          _dayScheduleCard(dayAppointments, appState.services),
         ],
       ),
     );
@@ -148,7 +149,10 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _dayScheduleCard(List<Appointment> dayAppointments) {
+  Widget _dayScheduleCard(
+    List<Appointment> dayAppointments,
+    List<SalonService> services,
+  ) {
     final dateLabel =
         '${_monthName(_selectedDate.month)} ${_selectedDate.day}, ${_selectedDate.year}';
     return Container(
@@ -193,6 +197,7 @@ class _CalendarPageState extends State<CalendarPage> {
             ...dayAppointments.map(
               (appt) {
                 final style = _statusStyle(appt.status);
+                final svc = appt.resolveServicesDisplay(services);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -204,7 +209,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${appt.customerName} (${appt.serviceName})',
+                          '${appt.customerName} ($svc)',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: style.color,

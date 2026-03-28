@@ -91,13 +91,16 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     setState(() { _loading = true; _err = null; });
     try {
       if (_isSuper) await app.loadBranches();
-      await app.loadAppointments(
-        page: _page, limit: _kLimit,
-        status:   _fStatus.isEmpty ? null : _fStatus,
-        date:     _fDate.isEmpty   ? null : _fDate,
-        branchId: _isSuper ? (_fBranch.isEmpty ? null : _fBranch)
-                           : app.currentUser?.branchId,
-      );
+      await Future.wait([
+        app.loadServices(),
+        app.loadAppointments(
+          page: _page, limit: _kLimit,
+          status:   _fStatus.isEmpty ? null : _fStatus,
+          date:     _fDate.isEmpty   ? null : _fDate,
+          branchId: _isSuper ? (_fBranch.isEmpty ? null : _fBranch)
+                             : app.currentUser?.branchId,
+        ),
+      ]);
       if (mounted) { _fadeCtrl.forward(from: 0); }
     } catch (e) {
       if (mounted) setState(() => _err = e.toString().replaceFirst('Exception: ', ''));
@@ -106,15 +109,18 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
   }
 
   List<Appointment> get _shown {
-    final raw = AppStateScope.of(context).appointments;
+    final app = AppStateScope.of(context);
+    final raw = app.appointments;
+    final catalog = app.services;
     final q = _q.trim().toLowerCase();
     if (q.isEmpty) return raw;
-    return raw.where((a) =>
-      a.customerName.toLowerCase().contains(q) ||
+    return raw.where((a) {
+      final svcLine = a.resolveServicesDisplay(catalog).toLowerCase();
+      return a.customerName.toLowerCase().contains(q) ||
           a.phone.toLowerCase().contains(q) ||
           a.serviceName.toLowerCase().contains(q) ||
-      a.servicesDisplay.toLowerCase().contains(q),
-    ).toList();
+          svcLine.contains(q);
+    }).toList();
   }
 
   Map<String, int> get _counts {
@@ -290,6 +296,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
                               delegate: SliverChildBuilderDelegate(
                                 (ctx, i) => _ApptCard(
                                   appt: list[i],
+                                  services: app.services,
                                   role: app.currentUser?.role ?? '',
                                   onTap: () => _openSheet(context, list[i]),
                                 ),
@@ -325,12 +332,15 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     final canPay   = canEdit && (s == 'confirmed' || s == 'in_service');
     final canChg   = canEdit && s != 'completed' && s != 'cancelled';
 
+    final services = AppStateScope.of(context).services;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _DetailSheet(
-        appt: a, meta: meta, canPay: canPay, canChange: canChg,
+        appt: a,
+        services: services,
+        meta: meta, canPay: canPay, canChange: canChg,
         canDelete: _canDel,
         onStatus:  () { Navigator.pop(ctx); _changeStatus(a); },
         onEdit:    () { Navigator.pop(ctx); _goEdit(e: a); },
@@ -358,13 +368,20 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     final svcs = app.services;
 
     final ids = <int>[];
-    final sid = int.tryParse(a.serviceId);
-    if (sid != null) ids.add(sid);
-    for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
-      for (final s in svcs) {
-        if (s.name == name) {
-          final id = int.tryParse(s.id);
-          if (id != null && !ids.contains(id)) ids.add(id);
+    if (a.serviceIds.isNotEmpty) {
+      for (final raw in a.serviceIds) {
+        final v = int.tryParse(raw);
+        if (v != null && !ids.contains(v)) ids.add(v);
+      }
+    } else {
+      final sid = int.tryParse(a.serviceId);
+      if (sid != null) ids.add(sid);
+      for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
+        for (final s in svcs) {
+          if (s.name == name) {
+            final id = int.tryParse(s.id);
+            if (id != null && !ids.contains(id)) ids.add(id);
+          }
         }
       }
     }
@@ -760,8 +777,14 @@ class _BranchPicker extends StatelessWidget {
 // APPOINTMENT CARD
 // ═════════════════════════════════════════════════════════════════════════════
 class _ApptCard extends StatelessWidget {
-  const _ApptCard({required this.appt, required this.role, required this.onTap});
+  const _ApptCard({
+    required this.appt,
+    required this.services,
+    required this.role,
+    required this.onTap,
+  });
   final Appointment appt;
+  final List<SalonService> services;
   final String role;
   final VoidCallback onTap;
 
@@ -771,7 +794,7 @@ class _ApptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final meta    = _sm(appt.status);
-    final service = appt.servicesDisplay.isEmpty ? appt.serviceName : appt.servicesDisplay;
+    final service = appt.resolveServicesDisplay(services);
     final amt     = appt.displayAmount > 0 ? appt.displayAmount : 0.0;
 
     return GestureDetector(
@@ -1097,12 +1120,15 @@ class _PBtn extends StatelessWidget {
 // ═════════════════════════════════════════════════════════════════════════════
 class _DetailSheet extends StatelessWidget {
   const _DetailSheet({
-    required this.appt, required this.meta,
+    required this.appt,
+    required this.services,
+    required this.meta,
     required this.canPay, required this.canChange, required this.canDelete,
     required this.onStatus, required this.onEdit,
     required this.onPay, required this.onDelete,
   });
   final Appointment appt;
+  final List<SalonService> services;
   final _SM meta;
   final bool canPay, canChange, canDelete;
   final VoidCallback onStatus, onEdit, onPay, onDelete;
@@ -1114,8 +1140,7 @@ class _DetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final service = appt.servicesDisplay.isEmpty
-        ? appt.serviceName : appt.servicesDisplay;
+    final service = appt.resolveServicesDisplay(services);
     final notes = AppointmentNotes
         .stripAdditionalServicesLine(appt.notes);
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/appointment.dart';
+import '../models/salon_service.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import 'ai_chat_page.dart';
@@ -76,6 +78,12 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  Future<void> _refreshDashboard() async {
+    if (!mounted) return;
+    setState(() => _error = null);
+    await _load();
+  }
+
   void _logout() {
     AppStateScope.of(context).logout();
     Navigator.of(context).pushAndRemoveUntil(
@@ -126,6 +134,7 @@ class _DashboardPageState extends State<DashboardPage>
                 dateStr:   _dateStr(),
                 userName:  user?.displayName ?? 'Staff',
                 role:      user?.role ?? 'staff',
+                onRefresh: _refreshDashboard,
                 onLogout:  _logout,
               ),
 
@@ -304,7 +313,11 @@ class _DashboardPageState extends State<DashboardPage>
       return _HintCard(icon: Icons.event_busy_rounded,
           text: 'No appointments yet — tap Appointments to add one.');
     }
-    return Column(children: top.map((a) => _ApptCard(appt: a)).toList());
+    return Column(
+      children: top
+          .map((a) => _ApptCard(appt: a, services: s.services))
+          .toList(),
+    );
   }
 }
 
@@ -318,10 +331,12 @@ class _Header extends StatelessWidget {
     required this.dateStr,
     required this.userName,
     required this.role,
+    required this.onRefresh,
     required this.onLogout,
   });
 
   final String greeting, dateStr, userName, role;
+  final Future<void> Function() onRefresh;
   final VoidCallback onLogout;
 
   @override
@@ -348,9 +363,8 @@ class _Header extends StatelessWidget {
                         fontWeight: FontWeight.w800, letterSpacing: 0.2)),
               ]),
               const Spacer(),
-              // Refresh
               GestureDetector(
-                onTap: onLogout,
+                onTap: () => onRefresh(),
                 child: Container(
                   width: 36, height: 36,
                   decoration: BoxDecoration(
@@ -362,32 +376,50 @@ class _Header extends StatelessWidget {
                           blurRadius: 8, offset: const Offset(0, 2)),
                     ],
                   ),
-                  child: const Icon(Icons.logout_rounded,
+                  child: const Icon(Icons.refresh_rounded,
                       color: Color(0xFF6B7280), size: 17),
                 ),
               ),
               const SizedBox(width: 10),
-              // Avatar circle
-              Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [_g700, _g900],
+              PopupMenuButton<String>(
+                tooltip: 'Account',
+                offset: const Offset(0, 44),
+                onSelected: (value) {
+                  if (value == 'logout') onLogout();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout_rounded, size: 20, color: _g900),
+                        SizedBox(width: 10),
+                        Text('Log out'),
+                      ],
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                        color: _g900.withValues(alpha: 0.30),
-                        blurRadius: 8, offset: const Offset(0, 2)),
-                  ],
-                ),
-                child: Center(
-                  child: Text(initial,
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 15,
-                          fontWeight: FontWeight.w900)),
+                ],
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_g700, _g900],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                          color: _g900.withValues(alpha: 0.30),
+                          blurRadius: 8, offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(initial,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 15,
+                            fontWeight: FontWeight.w900)),
+                  ),
                 ),
               ),
             ]),
@@ -654,11 +686,12 @@ class _NavTile extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _ApptCard extends StatelessWidget {
-  const _ApptCard({required this.appt});
-  final dynamic appt;
+  const _ApptCard({required this.appt, required this.services});
+  final Appointment appt;
+  final List<SalonService> services;
 
   Color _accent() {
-    switch ((appt.status as String).toLowerCase()) {
+    switch (appt.status.toLowerCase()) {
       case 'confirmed': return const Color(0xFF2563EB);
       case 'completed': return const Color(0xFF059669);
       case 'cancelled': return const Color(0xFFDC2626);
@@ -667,7 +700,7 @@ class _ApptCard extends StatelessWidget {
   }
 
   Color _bg() {
-    switch ((appt.status as String).toLowerCase()) {
+    switch (appt.status.toLowerCase()) {
       case 'confirmed': return const Color(0xFFDBEAFE);
       case 'completed': return const Color(0xFFD1FAE5);
       case 'cancelled': return const Color(0xFFFEE2E2);
@@ -679,6 +712,7 @@ class _ApptCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = _accent();
     final bg     = _bg();
+    final serviceLine = appt.resolveServicesDisplay(services);
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
       decoration: BoxDecoration(
@@ -712,7 +746,7 @@ class _ApptCard extends StatelessWidget {
                     decoration: BoxDecoration(color: bg,
                         borderRadius: BorderRadius.circular(11)),
                     child: Center(
-                      child: Text(appt.time as String,
+                      child: Text(appt.time,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: accent,
                             fontWeight: FontWeight.w800, fontSize: 11)),
@@ -723,14 +757,18 @@ class _ApptCard extends StatelessWidget {
                   Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(appt.customerName as String,
+                      Text(appt.customerName,
                         style: const TextStyle(color: _text,
                             fontWeight: FontWeight.w700, fontSize: 14)),
                       const SizedBox(height: 2),
-                      Text(appt.serviceName as String,
-                        style: const TextStyle(color: _sub, fontSize: 12)),
+                      Text(
+                        serviceLine,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _sub, fontSize: 12),
+                      ),
                       const SizedBox(height: 1),
-                      Text(appt.date as String,
+                      Text(appt.date,
                         style: const TextStyle(color: _muted, fontSize: 11.5)),
                     ],
                   )),
@@ -741,7 +779,7 @@ class _ApptCard extends StatelessWidget {
                       color: bg, borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: accent.withValues(alpha: 0.30)),
                     ),
-                    child: Text(appt.status as String,
+                    child: Text(appt.status,
                       style: TextStyle(color: accent, fontSize: 10.5,
                           fontWeight: FontWeight.w700)),
                   ),

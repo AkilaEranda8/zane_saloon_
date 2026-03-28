@@ -107,7 +107,8 @@ exports.list = async (req, res) => {
     const queue = await WalkIn.findAll({
       where,
       include: fullWalkInInclude,
-      order: [['createdAt', 'ASC']],
+      // Newest check-ins first; list index #1 = latest (matches staff app display).
+      order: [['createdAt', 'DESC']],
     });
 
     res.json(queue);
@@ -145,7 +146,9 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, serviceIds, note, staffId } = req.body;
+    const { customerName, phone, branchId, serviceId, note, staffId } = req.body;
+    // camelCase (web/mobile) or snake_case (some clients)
+    const serviceIds = req.body.serviceIds ?? req.body.service_ids;
 
     if (!customerName || !branchId) {
       return res.status(400).json({ message: 'customerName and branchId are required.' });
@@ -318,7 +321,8 @@ exports.assign = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, phone, serviceId, serviceIds, note } = req.body;
+    const { customerName, phone, serviceId, note } = req.body;
+    const serviceIds = req.body.serviceIds ?? req.body.service_ids;
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });

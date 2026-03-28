@@ -587,25 +587,32 @@ class MobileApi {
     String? note,
     String? staffId,
   }) async {
-    final ids = serviceIds == null || serviceIds.isEmpty
+    final primaryNum = int.tryParse(serviceId.trim()) ?? 0;
+    var ids = serviceIds == null || serviceIds.isEmpty
         ? <int>[]
         : serviceIds
             .map((id) => int.tryParse(id.trim()) ?? 0)
             .where((n) => n > 0)
             .toList();
+    // Ensure junction + totals always get at least primary when serviceId is set
+    if (ids.isEmpty && primaryNum > 0) {
+      ids = [primaryNum];
+    }
+    final reqBody = <String, dynamic>{
+      'customerName': customerName.trim(),
+      'branchId': int.tryParse(branchId) ?? branchId,
+      'serviceId': primaryNum > 0 ? primaryNum : int.tryParse(serviceId) ?? serviceId,
+      if (ids.isNotEmpty) 'serviceIds': ids,
+      if (ids.isNotEmpty) 'service_ids': ids,
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      if (staffId != null && staffId.trim().isNotEmpty)
+        'staffId': int.tryParse(staffId) ?? staffId,
+    };
     final response = await http.post(
       Uri.parse('$baseUrl/api/walkin/checkin'),
       headers: _authHeaders(token),
-      body: jsonEncode({
-        'customerName': customerName.trim(),
-        'branchId': int.tryParse(branchId) ?? branchId,
-        'serviceId': int.tryParse(serviceId) ?? serviceId,
-        if (ids.isNotEmpty) 'serviceIds': ids,
-        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-        if (staffId != null && staffId.trim().isNotEmpty)
-          'staffId': int.tryParse(staffId) ?? staffId,
-      }),
+      body: jsonEncode(reqBody),
     );
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
@@ -649,6 +656,46 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Walk-in status update failed');
     }
+  }
+
+  Future<WalkInEntry> updateWalkIn({
+    required String token,
+    required String walkInId,
+    required String customerName,
+    required String serviceId,
+    required List<String> serviceIds,
+    String? phone,
+    String? note,
+  }) async {
+    final primaryNum = int.tryParse(serviceId.trim()) ?? 0;
+    var ids = serviceIds
+        .map((id) => int.tryParse(id.trim()) ?? 0)
+        .where((n) => n > 0)
+        .toList();
+    if (ids.isEmpty && primaryNum > 0) {
+      ids = [primaryNum];
+    }
+    final reqBody = <String, dynamic>{
+      'customerName': customerName.trim(),
+      'phone': phone?.trim() ?? '',
+      'serviceId': primaryNum > 0 ? primaryNum : int.tryParse(serviceId) ?? serviceId,
+      if (ids.isNotEmpty) 'serviceIds': ids,
+      if (ids.isNotEmpty) 'service_ids': ids,
+      'note': note?.trim() ?? '',
+    };
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/walkin/$walkInId'),
+      headers: _authHeaders(token),
+      body: jsonEncode(reqBody),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Walk-in update failed');
+    }
+    if (body.isEmpty) {
+      throw Exception('Walk-in update returned empty response');
+    }
+    return WalkInEntry.fromJson(Map<String, dynamic>.from(body));
   }
 
   Map<String, String> _authHeaders(String token) => {

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
@@ -55,8 +55,20 @@ export default function StaffPage() {
   }, [filterBranch]);
   useEffect(() => { load(); }, [load]);
 
-  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: user?.branch_id||'', join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
-  const openEdit = row => { setEditItem(row); setForm({ ...row, join_date: row.join_date?.slice(0,10)||'' }); setSpecs((row.specializations||[]).map(s=>s.service_id)); setFormErr(''); setShowForm(true); };
+  const myBranchId = user?.branch_id ?? user?.branchId;
+  const branchChoices = (isSuperAdmin || user?.role === 'admin')
+    ? branches
+    : branches.filter((b) => String(b.id) === String(myBranchId ?? ''));
+
+  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: myBranchId != null ? String(myBranchId) : '', join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
+  const openEdit = row => {
+    const bid = row.branch_id ?? row.branch?.id;
+    setEditItem(row);
+    setForm({ ...row, branch_id: bid != null ? String(bid) : '', join_date: row.join_date?.slice(0,10)||'' });
+    setSpecs((row.specializations||[]).map(s=>s.service_id));
+    setFormErr('');
+    setShowForm(true);
+  };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
   const toggleSpec  = id => setSpecs(sp => sp.includes(id) ? sp.filter(x=>x!==id) : [...sp, id]);
 
@@ -64,7 +76,11 @@ export default function StaffPage() {
     if (!form.name || !form.branch_id) return setFormErr('Name and branch are required');
     setSaving(true);
     try {
-      const payload = { ...form, specializations: specs };
+      const payload = {
+        ...form,
+        branch_id: form.branch_id ? Number(form.branch_id) : null,
+        specializations: specs,
+      };
       editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
@@ -204,9 +220,9 @@ export default function StaffPage() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Role / Title"><Input value={form.role_title||''} onChange={e => setForm(f=>({...f, role_title:e.target.value}))} placeholder="e.g. Senior Stylist" /></FormGroup>
             <FormGroup label="Branch" required>
-              <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}>
+              <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))} disabled={user?.role === 'manager' && branchChoices.length <= 1}>
                 <option value="">Select branch</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {branchChoices.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </Select>
             </FormGroup>
           </div>

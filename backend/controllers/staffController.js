@@ -138,8 +138,8 @@ const update = async (req, res) => {
     }
 
     const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
-    // Only superadmin/admin can reassign to a different branch
-    if (['superadmin', 'admin'].includes(req.user?.role)) allowed.push('branch_id');
+    // Superadmin/admin: any branch. Manager: only their branch (validated below).
+    if (['superadmin', 'admin', 'manager'].includes(req.user?.role)) allowed.push('branch_id');
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -166,6 +166,9 @@ const update = async (req, res) => {
       const bid = parseInt(updates.branch_id, 10);
       if (Number.isNaN(bid)) {
         return res.status(400).json({ message: 'Invalid branch_id.' });
+      }
+      if (req.user?.role === 'manager' && Number(req.userBranchId) !== bid) {
+        return res.status(403).json({ message: 'Managers can only assign staff to their own branch.' });
       }
       updates.branch_id = bid;
     }

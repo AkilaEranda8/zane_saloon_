@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'pages/login_page.dart';
+import 'pages/session_gate.dart';
 import 'state/app_state.dart';
 
 void main() {
@@ -21,7 +21,7 @@ class StaffOnlyApp extends StatelessWidget {
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         ),
-        home: const LoginPage(),
+        home: const SessionGate(),
       ),
     );
   }

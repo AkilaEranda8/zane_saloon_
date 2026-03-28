@@ -133,6 +133,10 @@ class _EditApptSheetState extends State<_EditApptSheet> {
   }
 
   void _initServiceIds(Appointment a) {
+    if (a.serviceIds.isNotEmpty) {
+      _serviceIds.addAll(a.serviceIds);
+      return;
+    }
     if (a.serviceId.isNotEmpty) _serviceIds.add(a.serviceId);
     for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
       for (final s in widget.services) {

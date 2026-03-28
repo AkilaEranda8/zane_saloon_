@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_item.dart';
 import '../models/appointment.dart';
@@ -25,16 +28,21 @@ String _userFacingApiError(Object e) {
   return s.replaceFirst('Exception: ', '');
 }
 
+/// Same value passed to [MobileApi] (Socket.IO uses this origin).
+const String kStaffApiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://api.zanesalon.com',
+);
+
 class AppState extends ChangeNotifier {
-  AppState()
-    : _api = MobileApi(
-        baseUrl: const String.fromEnvironment(
-          'API_BASE_URL',
-          defaultValue: 'https://api.zanesalon.com',
-        ),
-      );
+  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl);
+
+  static const _kAuthTokenKey = 'staff_auth_token';
+  static const _kUserJsonKey = 'staff_user_json';
 
   final MobileApi _api;
+
+  String get apiBaseUrl => kStaffApiBaseUrl;
   final List<StaffUser> _staffUsers = [];
   final List<AppItem> _items = [];
   final List<Customer> _customers = [];
@@ -62,6 +70,60 @@ class AppState extends ChangeNotifier {
   int get appointmentTotal => _appointmentTotal;
 
   bool get isLoggedIn => _currentUser != null;
+
+  /// Restore session from device storage (call once at app start).
+  Future<void> loadPersistedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_kAuthTokenKey);
+      if (token == null || token.trim().isEmpty) return;
+      final raw = prefs.getString(_kUserJsonKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final role = '${map['role'] ?? 'staff'}';
+      final bid = '${map['branchId'] ?? ''}'.trim();
+      _currentUser = StaffUser(
+        id: '${map['id'] ?? ''}',
+        username: '${map['username'] ?? ''}',
+        password: '',
+        displayName: '${map['displayName'] ?? map['username'] ?? 'Staff'}',
+        isActive: true,
+        role: role,
+        branchId: (bid.isEmpty || bid.toLowerCase() == 'null') ? null : bid,
+        authToken: token,
+        permissions: _permissionsFromRole(role),
+      );
+      try {
+        await loadStaffList();
+      } catch (_) {}
+      notifyListeners();
+    } catch (_) {
+      await _clearPersistedSession();
+    }
+  }
+
+  Future<void> _persistSession(StaffUser user) async {
+    final token = user.authToken?.trim() ?? '';
+    if (token.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAuthTokenKey, token);
+    await prefs.setString(
+      _kUserJsonKey,
+      jsonEncode({
+        'id': user.id,
+        'username': user.username,
+        'displayName': user.displayName,
+        'role': user.role,
+        'branchId': user.branchId,
+      }),
+    );
+  }
+
+  Future<void> _clearPersistedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kAuthTokenKey);
+    await prefs.remove(_kUserJsonKey);
+  }
 
   Future<bool> loginStaff(String username, String password) async {
     try {
@@ -93,6 +155,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         // Keep login successful even if staff list fails to preload.
       }
+      await _persistSession(_currentUser!);
       notifyListeners();
       return true;
     } catch (e) {
@@ -106,6 +169,7 @@ class AppState extends ChangeNotifier {
     _customers.clear();
     _appointments.clear();
     _services.clear();
+    _clearPersistedSession();
     notifyListeners();
   }
 
@@ -440,6 +504,35 @@ class AppState extends ChangeNotifier {
         phone: phone,
         note: note,
         staffId: staffId,
+      );
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return null;
+    }
+  }
+
+  Future<WalkInEntry?> updateWalkInEntry({
+    required String walkInId,
+    required String customerName,
+    required String serviceId,
+    required List<String> serviceIds,
+    String? phone,
+    String? note,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update walk-in).';
+      return null;
+    }
+    try {
+      return await _api.updateWalkIn(
+        token: token,
+        walkInId: walkInId,
+        customerName: customerName,
+        serviceId: serviceId,
+        serviceIds: serviceIds,
+        phone: phone,
+        note: note,
       );
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');

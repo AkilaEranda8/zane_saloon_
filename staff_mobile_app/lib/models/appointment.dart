@@ -1,4 +1,5 @@
 import '../utils/appointment_notes.dart';
+import 'salon_service.dart';
 
 class Appointment {
   Appointment({
@@ -10,6 +11,7 @@ class Appointment {
     required this.status,
     required this.createdBy,
     this.serviceId = '',
+    this.serviceIds = const [],
     this.branchId = '',
     this.phone = '',
     this.notes = '',
@@ -27,6 +29,8 @@ class Appointment {
   final String status;
   final String createdBy;
   final String serviceId;
+  /// Ordered IDs from API (`appointment_services` / `service_ids`); preferred over notes for display.
+  final List<String> serviceIds;
   final String branchId;
   final String phone;
   final String notes;
@@ -45,6 +49,25 @@ class Appointment {
     return out.join(', ');
   }
 
+  /// Uses [serviceIds] + catalog when present (matches DB); otherwise [servicesDisplay] / primary name.
+  String resolveServicesDisplay(Iterable<SalonService> catalog) {
+    if (serviceIds.isNotEmpty) {
+      final byId = <String, String>{};
+      for (final s in catalog) {
+        byId[s.id] = s.name;
+      }
+      final names = <String>[];
+      for (final id in serviceIds) {
+        final n = byId[id];
+        if (n != null && n.isNotEmpty) names.add(n);
+      }
+      if (names.isNotEmpty) return names.join(', ');
+    }
+    final legacy = servicesDisplay;
+    if (legacy.isNotEmpty) return legacy;
+    return serviceName;
+  }
+
   double get displayAmount {
     if (amount > 0) return amount;
     return 0;
@@ -59,6 +82,14 @@ class Appointment {
     final amt = rawAmount is num
         ? rawAmount.toDouble()
         : double.tryParse('$rawAmount') ?? 0;
+    final rawIds = json['service_ids'];
+    final parsedIds = <String>[];
+    if (rawIds is List) {
+      for (final e in rawIds) {
+        final s = '$e'.trim();
+        if (s.isNotEmpty && s != 'null') parsedIds.add(s);
+      }
+    }
     return Appointment(
       id: '${json['id']}',
       customerName: '${json['customer_name'] ?? ''}',
@@ -68,6 +99,7 @@ class Appointment {
       status: '${json['status'] ?? 'pending'}',
       createdBy: '${staff is Map ? staff['name'] ?? '' : ''}',
       serviceId: '${json['service_id'] ?? service?['id'] ?? ''}',
+      serviceIds: parsedIds,
       branchId: '${json['branch_id'] ?? (branch is Map ? branch['id'] ?? '' : '')}',
       phone: '${json['phone'] ?? (customer is Map ? customer['phone'] ?? '' : '')}',
       notes: '${json['notes'] ?? ''}',

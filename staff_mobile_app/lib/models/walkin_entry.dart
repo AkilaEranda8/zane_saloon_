@@ -14,6 +14,7 @@ class WalkInEntry {
     required this.note,
     this.totalAmount = 0,
     this.walkInServicesPayload,
+    this.createdAt,
   });
 
   final String id;
@@ -33,6 +34,48 @@ class WalkInEntry {
 
   /// Raw `walkInServices` rows from API (for cache). Optional.
   final List<Map<String, dynamic>>? walkInServicesPayload;
+
+  /// Server `createdAt` (newest-first queue ordering).
+  final DateTime? createdAt;
+
+  /// Sort in place: newest first, then higher numeric [id].
+  static void sortNewestFirst(List<WalkInEntry> list) {
+    int idRank(WalkInEntry e) => int.tryParse(e.id) ?? 0;
+    list.sort((a, b) {
+      final ca = a.createdAt;
+      final cb = b.createdAt;
+      if (ca != null && cb != null) {
+        final c = cb.compareTo(ca);
+        if (c != 0) return c;
+      } else if (ca != null) {
+        return -1;
+      } else if (cb != null) {
+        return 1;
+      }
+      return idRank(b).compareTo(idRank(a));
+    });
+  }
+
+  /// Service line IDs in queue order (primary first). Used for payments / display.
+  List<String> get orderedServiceIds {
+    final lines = walkInServicesPayload;
+    if (lines != null && lines.isNotEmpty) {
+      final sorted = List<Map<String, dynamic>>.from(lines);
+      sorted.sort((a, b) {
+        final ao = a['sort_order'];
+        final bo = b['sort_order'];
+        final ai = ao is num ? ao.toInt() : int.tryParse('$ao') ?? 0;
+        final bi = bo is num ? bo.toInt() : int.tryParse('$bo') ?? 0;
+        return ai.compareTo(bi);
+      });
+      return sorted
+          .map((m) => '${m['service_id'] ?? ''}'.trim())
+          .where((s) => s.isNotEmpty && s != 'null')
+          .toList();
+    }
+    if (serviceId.isNotEmpty) return [serviceId];
+    return const [];
+  }
 
   factory WalkInEntry.fromJson(Map<String, dynamic> json) {
     final service = json['service'] is Map ? Map<String, dynamic>.from(json['service']) : const <String, dynamic>{};
@@ -61,6 +104,16 @@ class WalkInEntry {
       if (names.isNotEmpty) displayName = names.join(', ');
     }
 
+    DateTime? created;
+    final rawCreated = json['createdAt'] ?? json['created_at'];
+    if (rawCreated != null) {
+      if (rawCreated is DateTime) {
+        created = rawCreated;
+      } else {
+        created = DateTime.tryParse(rawCreated.toString());
+      }
+    }
+
     return WalkInEntry(
       id: '${json['id'] ?? ''}',
       token: '${json['token'] ?? ''}',
@@ -76,6 +129,7 @@ class WalkInEntry {
       note: '${json['note'] ?? ''}',
       totalAmount: total,
       walkInServicesPayload: linesPayload,
+      createdAt: created,
     );
   }
 
@@ -104,6 +158,10 @@ class WalkInEntry {
     final wiq = walkInServicesPayload;
     if (wiq != null && wiq.isNotEmpty) {
       map['walkInServices'] = wiq;
+    }
+    final c = createdAt;
+    if (c != null) {
+      map['created_at'] = c.toIso8601String();
     }
     return map;
   }
