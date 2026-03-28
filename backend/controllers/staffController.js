@@ -144,10 +144,51 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+
+    // Avoid MySQL/Sequelize errors: empty strings are invalid for DECIMAL / DATEONLY
+    if (Object.prototype.hasOwnProperty.call(updates, 'join_date')) {
+      const j = updates.join_date;
+      updates.join_date = j === '' || j == null ? null : j;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'phone')) {
+      if (updates.phone === '') updates.phone = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'commission_value')) {
+      const raw = updates.commission_value;
+      if (raw === '' || raw == null) {
+        updates.commission_value = 0;
+      } else {
+        const n = Number(raw);
+        updates.commission_value = Number.isFinite(n) ? n : 0;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'branch_id') && updates.branch_id != null) {
+      const bid = parseInt(updates.branch_id, 10);
+      if (Number.isNaN(bid)) {
+        return res.status(400).json({ message: 'Invalid branch_id.' });
+      }
+      updates.branch_id = bid;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'is_active') && typeof updates.is_active === 'string') {
+      updates.is_active = updates.is_active === 'true' || updates.is_active === '1';
+    }
+
     await staff.update(updates);
+
+    const { specializations } = req.body;
+    if (Array.isArray(specializations)) {
+      await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
+      if (specializations.length) {
+        const ids = specializations.map((sid) => Number(sid)).filter((n) => Number.isFinite(n));
+        const specs = ids.map((service_id) => ({ staff_id: staff.id, service_id }));
+        await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+      }
+    }
+
     return res.json(staff);
   } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
+    console.error('Staff update error:', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
   }
 };
 

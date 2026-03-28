@@ -10,6 +10,7 @@ const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { runAppointmentServicesMigration } = require('./services/appointmentServicesMigration');
+const { ensureUsersStaffIdColumn } = require('./services/ensureUsersStaffIdColumn');
 
 // Validate required env vars on startup
 validateEnv();
@@ -142,6 +143,7 @@ async function connectWithRetry(retries = 10, delay = 3000) {
 connectWithRetry().then(async () => {
   // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
   try {
+    await ensureUsersStaffIdColumn();
     await sequelize.sync({ force: false });
     await runAppointmentServicesMigration();
   } catch (err) {
