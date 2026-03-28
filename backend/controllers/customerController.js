@@ -14,7 +14,7 @@ const handleCustomerWriteError = (err, res) => {
   if (err.name === 'SequelizeUniqueConstraintError') {
     const conflictField = err.errors?.[0]?.path;
     if (conflictField === 'phone') {
-      res.status(409).json({ message: 'A customer with this phone already exists for this branch.' });
+      res.status(409).json({ message: 'A customer with this phone number already exists.' });
       return true;
     }
     res.status(409).json({ message: 'Customer already exists.' });

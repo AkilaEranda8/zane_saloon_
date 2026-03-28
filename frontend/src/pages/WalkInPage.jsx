@@ -11,6 +11,12 @@ import {
   PKModal as Modal, StatCard, StaffAvatar,
   IconUsers, IconCheck, IconClock, IconCalendar,
 } from '../components/ui/PageKit';
+import {
+  ADDITIONAL_SERVICES_PREFIX,
+  parseAdditionalServiceIdsFromNote,
+  getWalkInOrderedServiceIds,
+  getWalkInServicesTitle,
+} from '../utils/walkInHelpers';
 
 /*  Constants  */
 const STATUS_BORDER = { waiting: '#f59e0b', serving: '#10b981', completed: '#94a3b8', cancelled: '#ef4444' };
@@ -20,7 +26,6 @@ const EMPTY_FORM    = { customerName: '', phone: '', serviceId: '', branchId: ''
 const DARK          = '#101828';
 const MUTED         = '#64748B';
 const ACTIVE_PILL   = '#1e293b';
-const ADDITIONAL_SERVICES_PREFIX = 'Additional services:';
 
 /*  Helpers  */
 const fmtTime = (t) => { if (!t) return ''; const [h, m] = t.split(':'); const hr = +h % 12 || 12; return `${hr}:${m} ${+h >= 12 ? 'PM' : 'AM'}`; };
@@ -151,23 +156,15 @@ export default function WalkInPage() {
   const removeEntry = async (id) => {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
   };
-  const parseAdditionalServiceIds = (note = '') => {
-    const line = String(note).split('\n').find((l) => l.trim().startsWith(ADDITIONAL_SERVICES_PREFIX));
-    if (!line) return [];
-    const rawNames = line.replace(ADDITIONAL_SERVICES_PREFIX, '').split(',').map((s) => s.trim()).filter(Boolean);
-    return rawNames
-      .map((name) => services.find((s) => s.name === name)?.id)
-      .filter(Boolean);
-  };
+  const parseAdditionalServiceIds = (note = '') => parseAdditionalServiceIdsFromNote(note, services);
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => {
     const svc = services.find((x) => Number(x.id) === Number(sid));
     return sum + Number(svc?.price || 0);
   }, 0);
   const openPayment = (entry) => {
-    const svcId = Number(entry?.service_id || entry?.service?.id);
-    const extraIds = parseAdditionalServiceIds(entry?.note);
-    const ids = Array.from(new Set([...(svcId ? [svcId] : []), ...extraIds.map((x) => Number(x))]));
-    const baseAmount = calcServiceTotal(ids);
+    const ids = getWalkInOrderedServiceIds(entry, services);
+    const fromApi = Number(entry?.total_amount);
+    const baseAmount = fromApi > 0 ? fromApi : calcServiceTotal(ids);
     setPaymentEntry(entry);
     setPaymentMethod('Cash');
     setPaymentAmount(baseAmount > 0 ? String(baseAmount) : '');
@@ -179,7 +176,7 @@ export default function WalkInPage() {
     const nid = Number(id);
     setPaymentServices((prev) => {
       const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
-      setPaymentAmount(calcServiceTotal(next));
+      setPaymentAmount(String(calcServiceTotal(next)));
       return next;
     });
   };
@@ -221,15 +218,24 @@ export default function WalkInPage() {
     }
   };
   const openEdit = (entry) => {
-    const extraIds = parseAdditionalServiceIds(entry.note);
+    const wiq = entry?.walkInServices;
+    let primarySid = entry.service_id || entry.service?.id || '';
+    let extraIds = [];
+    if (Array.isArray(wiq) && wiq.length > 0) {
+      const sorted = [...wiq].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      primarySid = sorted[0].service_id;
+      extraIds = sorted.slice(1).map((r) => r.service_id).filter(Boolean);
+    } else {
+      extraIds = parseAdditionalServiceIds(entry.note);
+    }
     setEditEntry(entry);
     setEditForm({
       customerName: entry.customer_name || '',
       phone: entry.phone || '',
-      serviceId: entry.service_id || entry.service?.id || '',
+      serviceId: primarySid,
       note: removeAdditionalServicesLine(entry.note || ''),
     });
-    setEditExtraServiceIds(extraIds);
+    setEditExtraServiceIds(extraIds.map(Number));
     setEditError('');
   };
   const toggleEditExtraService = (id) => {
@@ -296,10 +302,13 @@ export default function WalkInPage() {
         baseNote,
         extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
       ].filter(Boolean).join('\n');
+      const primarySid = Number(editForm.serviceId);
+      const editServiceIds = [primarySid, ...editExtraServiceIds.filter((x) => Number(x) !== primarySid)];
       await api.patch(`/walkin/${editEntry.id}`, {
         customerName: editForm.customerName.trim(),
         phone: editForm.phone || '',
-        serviceId: Number(editForm.serviceId),
+        serviceId: primarySid,
+        serviceIds: editServiceIds,
         note: fullNote,
       });
       toast('Walk-in entry updated.', 'success');
@@ -315,6 +324,17 @@ export default function WalkInPage() {
   const handleCheckin = async () => {
     setSaving(true); setFormError('');
     try {
+      const nameTrim = (form.customerName || '').trim();
+      if (!nameTrim) {
+        setFormError('Enter a customer name.');
+        setSaving(false);
+        return;
+      }
+      if (isAdmin && !(form.branchId || selectedBranch)) {
+        setFormError('Select a branch.');
+        setSaving(false);
+        return;
+      }
       const selectedServiceIds = getCheckinSelectedServiceIds();
       if (!selectedServiceIds.length) {
         setFormError('Select at least one service.');
@@ -330,16 +350,18 @@ export default function WalkInPage() {
         extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
       ].filter(Boolean).join('\n');
       const res = await api.post('/walkin/checkin', {
-        customerName: form.customerName,
+        customerName: nameTrim,
         phone:        form.phone || getCustomerPhone(selectedCustomer) || undefined,
         branchId:     form.branchId   || selectedBranch,
         serviceId:    Number(selectedServiceIds[0]),
+        serviceIds:   selectedServiceIds.map(Number),
         note:         fullNote        || undefined,
       });
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
       setCheckinExtraServiceIds([]);
       setSelectedCustomer(null);
+      setCustSearch('');
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
@@ -378,9 +400,18 @@ export default function WalkInPage() {
     setShowCustDrop(false);
   };
 
-  /*  Estimated wait preview  */
-  const selectedService = services.find((s) => s.id === +form.serviceId);
-  const waitPreview     = selectedService ? stats.waiting * (selectedService.duration_minutes || 30) : null;
+  /*  Check-in: wait + bill preview (all selected services)  */
+  const checkinSelectedIds = getCheckinSelectedServiceIds();
+  let checkinDurationSum = 0;
+  let checkinTotalPreview = 0;
+  for (const sid of checkinSelectedIds) {
+    const svc = services.find((x) => Number(x.id) === Number(sid));
+    if (svc) {
+      checkinDurationSum += Number(svc.duration_minutes || 30);
+      checkinTotalPreview += Number(svc.price || 0);
+    }
+  }
+  const waitPreview = checkinSelectedIds.length ? stats.waiting * checkinDurationSum : null;
 
   /*  Page actions  */
   const pageActions = (
@@ -495,6 +526,8 @@ export default function WalkInPage() {
           {filteredQueue.map((entry) => {
             const svc = entry.service || {};
             const stf = entry.staff;
+            const servicesLine = getWalkInServicesTitle(entry);
+            const noteOnly = removeAdditionalServicesLine(entry.note || '');
             return (
               <div key={entry.id} style={{
                 background: '#fff', borderRadius: 14,
@@ -521,18 +554,23 @@ export default function WalkInPage() {
                 <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
                   {entry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{entry.phone}</div>}
-                  {svc.name && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#344054' }}>{svc.name}</span>
+                  {servicesLine && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#344054' }}>{servicesLine}</span>
                       {svc.duration_minutes && (
                         <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
                           {svc.duration_minutes} min
                         </span>
                       )}
+                      {Number(entry.total_amount) > 0 && (
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#059669' }}>
+                          Rs. {Number(entry.total_amount).toLocaleString()}
+                        </span>
+                      )}
                     </div>
                   )}
-                  {entry.note && (
-                    <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{entry.note}</div>
+                  {noteOnly && (
+                    <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{noteOnly}</div>
                   )}
                 </div>
 
@@ -603,17 +641,6 @@ export default function WalkInPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {formError && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
-          )}
-
-          {isAdmin && (
-            <div>
-              <Label>Branch</Label>
-              <select style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-                <option value="">Select branch</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
           )}
 
           {/* CUSTOMER SEARCH / CARD */}
@@ -754,8 +781,20 @@ export default function WalkInPage() {
             <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </div>
 
+          {isAdmin && (
+            <div>
+              <Label>Branch</Label>
+              <select style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
+                value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+                <option value="">Select branch</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <Label>Services * (Select one or more)</Label>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>First selected service is primary; order in queue follows your selection.</div>
             <div style={{ border: '1px solid #DCE6F3', borderRadius: 12, overflow: 'hidden', marginTop: 4, maxHeight: 220, overflowY: 'auto' }}>
               {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
                 const active = getCheckinSelectedServiceIds().includes(Number(s.id));
@@ -771,9 +810,16 @@ export default function WalkInPage() {
             </div>
           </div>
 
-          {waitPreview != null && (
-            <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 14px', fontSize: 13, color: '#15803D', fontWeight: 600 }}>
-              ⏳ Estimated wait: ~{waitPreview} min ({stats.waiting} ahead)
+          {checkinSelectedIds.length > 0 && (
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {waitPreview != null && (
+                <div style={{ fontSize: 13, color: '#15803D', fontWeight: 600 }}>
+                  Estimated wait: ~{waitPreview} min <span style={{ fontWeight: 500, color: MUTED }}>({stats.waiting} ahead × {checkinDurationSum} min service time)</span>
+                </div>
+              )}
+              <div style={{ fontSize: 14, color: '#0F172A', fontWeight: 700 }}>
+                Estimated bill: Rs. {checkinTotalPreview.toLocaleString()}
+              </div>
             </div>
           )}
 
@@ -785,7 +831,16 @@ export default function WalkInPage() {
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <Button variant="secondary" onClick={() => setShowCheckin(false)}>Cancel</Button>
-          <Button onClick={handleCheckin} loading={saving} disabled={saving || !form.customerName || !form.serviceId}>
+          <Button
+            onClick={handleCheckin}
+            loading={saving}
+            disabled={
+              saving
+              || !(form.customerName || '').trim()
+              || !form.serviceId
+              || (isAdmin && !(form.branchId || selectedBranch))
+            }
+          >
             Check In
           </Button>
         </div>
@@ -807,7 +862,16 @@ export default function WalkInPage() {
               </span>
             </div>
             <div style={{ fontSize: 16, fontWeight: 700, color: DARK, marginBottom: 4 }}>{showToken.customer_name}</div>
-            {showToken.service?.name && <div style={{ fontSize: 13, color: MUTED, marginBottom: 2 }}>{showToken.service.name}</div>}
+            {getWalkInServicesTitle(showToken) && (
+              <div style={{ fontSize: 13, color: MUTED, marginBottom: 2, maxWidth: 320, margin: '0 auto 2px', lineHeight: 1.4 }}>
+                {getWalkInServicesTitle(showToken)}
+              </div>
+            )}
+            {Number(showToken.total_amount) > 0 && (
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#059669', marginBottom: 4 }}>
+                Rs. {Number(showToken.total_amount).toLocaleString()}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: '#94A3B8' }}>{fmtTime(showToken.check_in_time)}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>

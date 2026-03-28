@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../models/walkin_entry.dart';
+import '../services/walkin_queue_cache.dart';
 import '../state/app_state.dart';
 import 'add_walkin_modal.dart';
 import 'add_walkin_payment_modal.dart';
@@ -42,6 +43,7 @@ class WalkInPage extends StatefulWidget {
 
 class _WalkInPageState extends State<WalkInPage> {
   Future<void>? _future;
+  bool _fromCache = false;
   List<WalkInEntry>         _walkIns   = const [];
   List<SalonService>        _services  = const [];
   List<Map<String, String>> _branches  = const [];
@@ -65,13 +67,33 @@ class _WalkInPageState extends State<WalkInPage> {
 
     if (branches.isEmpty) {
       if (!mounted) return;
-      setState(() { _services = services; _branches = []; _walkIns = []; });
+      setState(() {
+        _services = services;
+        _branches = [];
+        _walkIns = [];
+        _fromCache = false;
+      });
       return;
     }
     final branchId = uid ?? branches.first['id'] ?? '';
-    final queue = await app.loadWalkIns(branchId: branchId);
+    List<WalkInEntry> queue;
+    var fromCache = false;
+    try {
+      queue = await app.loadWalkIns(branchId: branchId);
+      await WalkInQueueCache.save(branchId, queue);
+    } catch (_) {
+      final cached = await WalkInQueueCache.load(branchId);
+      if (cached == null) rethrow;
+      queue = cached;
+      fromCache = true;
+    }
     if (!mounted) return;
-    setState(() { _services = services; _branches = branches; _walkIns = queue; });
+    setState(() {
+      _services = services;
+      _branches = branches;
+      _walkIns = queue;
+      _fromCache = fromCache;
+    });
   }
 
   void _refresh() => setState(() => _future = _load());
@@ -115,19 +137,31 @@ class _WalkInPageState extends State<WalkInPage> {
       customers: customers,
       staffList: staff,
       initialBranchId: uid,
+      onBranchChanged: (branchId) => app.staffMembersForBranch(branchId),
     );
     if (payload == null || !mounted) return;
 
-    final ok = await app.addWalkIn(
+    final created = await app.addWalkIn(
       branchId:     payload.branchId,
       customerName: payload.customerName,
       serviceId:    payload.serviceId,
+      serviceIds:   payload.serviceIds,
       phone:        payload.phone,
       note:         payload.note,
       staffId:      payload.staffId,
     );
     if (!mounted) return;
-    if (!ok) { _toast(app.lastError ?? 'Failed to add walk-in'); return; }
+    if (created == null) {
+      _toast(app.lastError ?? 'Failed to add walk-in');
+      return;
+    }
+    setState(() {
+      _walkIns = [
+        created,
+        ..._walkIns.where((w) => w.id != created.id),
+      ];
+    });
+    await WalkInQueueCache.save(payload.branchId, _walkIns);
     _refresh();
   }
 
@@ -179,11 +213,14 @@ class _WalkInPageState extends State<WalkInPage> {
         id: e.serviceId, name: e.serviceName,
         category: 'Other', price: 0, durationMinutes: 30),
     );
+    final initialPay = e.totalAmount > 0
+        ? e.totalAmount.toStringAsFixed(0)
+        : (svc.price > 0 ? svc.price.toStringAsFixed(0) : '');
     final payload = await AddWalkInPaymentModal.show(
       context,
       customerName: e.customerName,
       serviceName:  e.serviceName,
-      initialAmount: svc.price > 0 ? svc.price.toStringAsFixed(0) : '',
+      initialAmount: initialPay,
     );
     if (payload == null || !mounted) return;
 
@@ -192,6 +229,7 @@ class _WalkInPageState extends State<WalkInPage> {
       serviceId:      e.serviceId,
       staffId:        e.staffId.isEmpty ? null : e.staffId,
       customerName:   e.customerName,
+      phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
       totalAmount:    payload.amount,
       loyaltyDiscount: '0',
       method:         payload.method,
@@ -304,7 +342,19 @@ class _WalkInPageState extends State<WalkInPage> {
     _buildHeader(loading: false),
     Expanded(
       child: _walkIns.isEmpty
-          ? _buildEmpty()
+          ? RefreshIndicator(
+              color: _forest,
+              onRefresh: () async => _refresh(),
+              child: LayoutBuilder(
+                builder: (ctx, constraints) => SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: _buildEmpty(),
+                  ),
+                ),
+              ),
+            )
           : RefreshIndicator(
               color: _forest,
               onRefresh: () async => _refresh(),
@@ -323,27 +373,34 @@ class _WalkInPageState extends State<WalkInPage> {
   ]);
 
   // ── Empty ──────────────────────────────────────────────────────────────────
-  Widget _buildEmpty() => Center(child: Column(mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 72, height: 72,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [_forest.withValues(alpha: 0.12),
-                     _emerald.withValues(alpha: 0.06)],
-            begin: Alignment.topLeft, end: Alignment.bottomRight),
-          shape: BoxShape.circle),
-        child: const Icon(Icons.directions_walk_rounded,
-            color: _forest, size: 32),
-      ),
-      const SizedBox(height: 16),
-      const Text('Queue is empty',
-        style: TextStyle(color: _ink, fontSize: 16,
-            fontWeight: FontWeight.w700)),
-      const SizedBox(height: 6),
-      const Text('Tap + to add a walk-in customer',
-        style: TextStyle(color: _muted, fontSize: 13)),
-    ],
+  Widget _buildEmpty() => Center(child: Padding(
+    padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
+    child: Column(mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_forest.withValues(alpha: 0.12),
+                       _emerald.withValues(alpha: 0.06)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight),
+            shape: BoxShape.circle),
+          child: const Icon(Icons.directions_walk_rounded,
+              color: _forest, size: 32),
+        ),
+        const SizedBox(height: 16),
+        const Text('Queue is empty',
+          style: TextStyle(color: _ink, fontSize: 16,
+              fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(
+          _fromCache
+              ? 'Saved copy — connect to refresh. Tap + when online to add.'
+              : 'Tap + to add a walk-in customer',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _muted, fontSize: 13)),
+      ],
+    ),
   ));
 
   // ── Header ─────────────────────────────────────────────────────────────────
@@ -400,6 +457,35 @@ class _WalkInPageState extends State<WalkInPage> {
               ),
             ]),
           ),
+
+          if (!loading && _fromCache)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDBA74)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.cloud_off_rounded,
+                      color: Colors.orange.shade800, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Showing saved queue — pull down to refresh',
+                      style: TextStyle(
+                          color: Colors.orange.shade900,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
 
           // Stats card
           Padding(
@@ -584,10 +670,21 @@ class _WalkInCard extends StatelessWidget {
                     const Icon(Icons.content_cut_rounded,
                         size: 12, color: _muted),
                     const SizedBox(width: 4),
-                    Text(e.serviceName,
-                      style: const TextStyle(
-                        color: _muted, fontSize: 12.5,
-                        fontWeight: FontWeight.w500)),
+                    Expanded(
+                      child: Text(e.serviceName,
+                        style: const TextStyle(
+                          color: _muted, fontSize: 12.5,
+                          fontWeight: FontWeight.w500)),
+                    ),
+                    if (e.totalAmount > 0)
+                      Text(
+                        'LKR ${e.totalAmount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: _forest,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                   ]),
                   // Phone
                   if (e.phone.isNotEmpty) ...[

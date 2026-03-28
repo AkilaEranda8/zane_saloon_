@@ -4,6 +4,9 @@ import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 
+/// Same as web `WalkInPage.jsx` — extra services go in `note`; API stores one `service_id`.
+const String _kAdditionalServicesLinePrefix = 'Additional services:';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _cForest  = Color(0xFF1B3A2D);
 const Color _cEmerald = Color(0xFF2D6A4F);
@@ -21,6 +24,7 @@ class AddWalkInModalResult {
     required this.customerName,
     required this.phone,
     required this.serviceId,
+    required this.serviceIds,
     required this.note,
     this.staffId,
   });
@@ -29,6 +33,8 @@ class AddWalkInModalResult {
   final String customerName;
   final String phone;
   final String serviceId;
+  /// Ordered selection (primary first) — used by API to save `total_amount`.
+  final List<String> serviceIds;
   final String note;
   final String? staffId;
 }
@@ -41,6 +47,7 @@ class AddWalkInModal extends StatefulWidget {
     this.customers = const [],
     this.staffList = const [],
     this.initialBranchId,
+    this.onBranchChanged,
     super.key,
   });
 
@@ -50,6 +57,9 @@ class AddWalkInModal extends StatefulWidget {
   final List<StaffMember> staffList;
   final String? initialBranchId;
 
+  /// Reload staff when the user picks a different branch (managers with multiple branches).
+  final Future<List<StaffMember>> Function(String branchId)? onBranchChanged;
+
   static Future<AddWalkInModalResult?> show(
     BuildContext context, {
     required List<Map<String, String>> branches,
@@ -57,6 +67,7 @@ class AddWalkInModal extends StatefulWidget {
     List<Customer> customers = const [],
     List<StaffMember> staffList = const [],
     String? initialBranchId,
+    Future<List<StaffMember>> Function(String branchId)? onBranchChanged,
   }) {
     return showModalBottomSheet<AddWalkInModalResult>(
       context: context,
@@ -68,6 +79,7 @@ class AddWalkInModal extends StatefulWidget {
         customers: customers,
         staffList: staffList,
         initialBranchId: initialBranchId,
+        onBranchChanged: onBranchChanged,
       ),
     );
   }
@@ -83,13 +95,21 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   final _noteCtrl  = TextEditingController();
 
   String? _branchId;
-  String? _serviceId;
+  String? _primaryServiceId;
+  final List<String> _extraServiceIds = [];
   String? _staffId;
+  List<StaffMember> _staffLocal = const [];
+  bool _staffLoading = false;
 
   @override
   void initState() {
     super.initState();
     _branchId = widget.initialBranchId;
+    if ((_branchId == null || _branchId!.trim().isEmpty) &&
+        widget.branches.length == 1) {
+      _branchId = widget.branches.first['id'];
+    }
+    _staffLocal = List<StaffMember>.from(widget.staffList);
   }
 
   @override
@@ -100,14 +120,112 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     super.dispose();
   }
 
+  Future<void> _onBranchPicked(String? v) async {
+    setState(() {
+      _branchId = v;
+      _staffId = null;
+    });
+    final bid = v?.trim();
+    if (bid == null || bid.isEmpty) return;
+    if (widget.onBranchChanged == null) {
+      setState(() {
+        _staffLocal = List<StaffMember>.from(widget.staffList);
+      });
+      return;
+    }
+    setState(() => _staffLoading = true);
+    try {
+      final list = await widget.onBranchChanged!(bid);
+      if (!mounted) return;
+      setState(() {
+        _staffLocal = list;
+        _staffLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _staffLoading = false;
+        _staffLocal = [];
+      });
+    }
+  }
+
+  List<String> _orderedSelectedServiceIds() {
+    final p = _primaryServiceId?.trim();
+    if (p == null || p.isEmpty) return const [];
+    return [p, ..._extraServiceIds.where((id) => id != p)];
+  }
+
+  void _toggleService(String id) {
+    final primary = _primaryServiceId?.trim();
+    final selected = _orderedSelectedServiceIds();
+    final isSelected = selected.contains(id);
+
+    if (!isSelected) {
+      if (primary == null || primary.isEmpty) {
+        setState(() => _primaryServiceId = id);
+      } else {
+        setState(() {
+          if (!_extraServiceIds.contains(id)) _extraServiceIds.add(id);
+        });
+      }
+      return;
+    }
+
+    if (primary == id) {
+      final remaining = selected.where((x) => x != id).toList();
+      if (remaining.isEmpty) {
+        setState(() {
+          _primaryServiceId = null;
+          _extraServiceIds.clear();
+        });
+      } else {
+        setState(() {
+          _primaryServiceId = remaining.first;
+          _extraServiceIds
+            ..clear()
+            ..addAll(remaining.skip(1));
+        });
+      }
+    } else {
+      setState(() => _extraServiceIds.remove(id));
+    }
+  }
+
+  String _noteForApi() {
+    final base = _noteCtrl.text
+        .split('\n')
+        .where((l) => !l.trim().startsWith(_kAdditionalServicesLinePrefix))
+        .join('\n')
+        .trim();
+    final ordered = _orderedSelectedServiceIds();
+    if (ordered.length <= 1) return base;
+    final extraNames = ordered
+        .skip(1)
+        .map((sid) {
+          for (final s in widget.services) {
+            if (s.id == sid) return s.name;
+          }
+          return '';
+        })
+        .where((n) => n.trim().isNotEmpty)
+        .toList();
+    if (extraNames.isEmpty) return base;
+    final extraLine = '$_kAdditionalServicesLinePrefix ${extraNames.join(', ')}';
+    if (base.isEmpty) return extraLine;
+    return '$base\n$extraLine';
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    final ids = _orderedSelectedServiceIds();
     Navigator.of(context).pop(AddWalkInModalResult(
       branchId:     (_branchId ?? '').trim(),
       customerName: _nameCtrl.text.trim(),
       phone:        _phoneCtrl.text.trim(),
-      serviceId:    (_serviceId ?? '').trim(),
-      note:         _noteCtrl.text.trim(),
+      serviceId:    ids.isEmpty ? '' : ids.first.trim(),
+      serviceIds:   List<String>.from(ids),
+      note:         _noteForApi(),
       staffId:      _staffId?.trim().isEmpty == true ? null : _staffId?.trim(),
     ));
   }
@@ -202,7 +320,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                           color: _cInk, fontSize: 17,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.2)),
-                      Text('Add customer to the queue',
+                      Text('Customer first, then services',
                         style: TextStyle(
                           color: Color(0xFFADB5BD), fontSize: 12,
                           fontWeight: FontWeight.w500)),
@@ -224,7 +342,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
               const SizedBox(height: 22),
 
-              // ── Customer (autocomplete) ──────────────────────────────
+              // ── Customer (autocomplete) — first ─────────────────────
               _label('CUSTOMER'),
               Autocomplete<Customer>(
                 optionsBuilder: (val) {
@@ -330,8 +448,44 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
               const SizedBox(height: 14),
 
-              // ── Service chips ────────────────────────────────────────
-              _label('SERVICE'),
+              // ── Branch (then services) ───────────────────────────────
+              if (widget.branches.isNotEmpty) ...[
+                _label('BRANCH'),
+                DropdownButtonFormField<String>(
+                  key: ValueKey<String?>('branch_$_branchId'),
+                  initialValue: _branchId,
+                  isExpanded: true,
+                  decoration: _deco('Select branch',
+                      Icons.store_mall_directory_outlined,
+                      required: true),
+                  items: widget.branches
+                      .map((b) => DropdownMenuItem(
+                            value: b['id'],
+                            child: Text(b['name'] ?? '',
+                                overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (v) => _onBranchPicked(v),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty)
+                          ? 'Branch required' : null,
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // ── Service chips (multi-select, matches web walk-in) ─────
+              _label('SERVICES'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Tap to choose; tap again to add more. Tap selected to remove.',
+                  style: TextStyle(
+                    color: _cMuted.withValues(alpha: 0.95),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35),
+                ),
+              ),
               if (activeServices.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -346,10 +500,12 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                 Wrap(
                   spacing: 7, runSpacing: 7,
                   children: activeServices.map((s) {
-                    final on = _serviceId == s.id;
+                    final selected = _orderedSelectedServiceIds();
+                    final on = selected.contains(s.id);
+                    final isPrimary =
+                        on && _primaryServiceId == s.id && selected.length > 1;
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => _serviceId = on ? null : s.id),
+                      onTap: () => _toggleService(s.id),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 140),
                         padding: const EdgeInsets.symmetric(
@@ -385,6 +541,16 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                                       : const Color(0xFFADB5BD),
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w600)),
+                              if (isPrimary)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text('Primary',
+                                    style: TextStyle(
+                                      color: _cForest.withValues(alpha: 0.85),
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.3)),
+                                ),
                             ],
                           ),
                         ]),
@@ -392,11 +558,10 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                     );
                   }).toList(),
                 ),
-              // Validation hint
-              if (_serviceId == null)
+              if (_orderedSelectedServiceIds().isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 2),
-                  child: Text('Please select a service',
+                  child: Text('Select at least one service',
                     style: TextStyle(
                       color: Colors.red.shade400,
                       fontSize: 11.5)),
@@ -404,34 +569,31 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
               const SizedBox(height: 14),
 
-              // ── Branch ───────────────────────────────────────────────
-              if (widget.branches.isNotEmpty) ...[
-                _label('BRANCH'),
-                DropdownButtonFormField<String>(
-                  initialValue: _branchId,
-                  isExpanded: true,
-                  decoration: _deco('Select branch',
-                      Icons.store_mall_directory_outlined,
-                      required: true),
-                  items: widget.branches
-                      .map((b) => DropdownMenuItem(
-                            value: b['id'],
-                            child: Text(b['name'] ?? '',
-                                overflow: TextOverflow.ellipsis),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setState(() => _branchId = v),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty)
-                          ? 'Branch required' : null,
+              // ── Staff (reloads when branch changes) ──────────────────
+              if (_staffLoading) ...[
+                _label('ASSIGN STAFF'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _cForest.withValues(alpha: 0.85)),
+                    ),
+                    const SizedBox(width: 10),
+                    Text('Loading staff for branch…',
+                      style: TextStyle(
+                        color: _cMuted, fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                  ]),
                 ),
                 const SizedBox(height: 14),
-              ],
-
-              // ── Staff ────────────────────────────────────────────────
-              if (widget.staffList.isNotEmpty) ...[
+              ] else if (_staffLocal.isNotEmpty) ...[
                 _label('ASSIGN STAFF'),
                 DropdownButtonFormField<String>(
+                  key: ValueKey<String?>(
+                      'staff_${_branchId}_${_staffLocal.map((s) => s.id).join(',')}'),
                   initialValue: _staffId,
                   isExpanded: true,
                   decoration: _deco('Select staff member (optional)',
@@ -442,7 +604,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                       child: Text('— No assignment —',
                           style: TextStyle(color: Color(0xFFADB5BD))),
                     ),
-                    ...widget.staffList.map((s) => DropdownMenuItem(
+                    ..._staffLocal.map((s) => DropdownMenuItem(
                       value: s.id,
                       child: Row(children: [
                         Container(
@@ -517,7 +679,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
               // ── Submit ───────────────────────────────────────────────
               GestureDetector(
                 onTap: () {
-                  if (_serviceId == null) {
+                  if (_orderedSelectedServiceIds().isEmpty) {
                     setState(() {}); // trigger validation hint
                     return;
                   }

@@ -46,7 +46,7 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
   },
   payment_receipt_sms: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false,
+    defaultValue: true,
     allowNull: false,
   },
   loyalty_points_sms: {

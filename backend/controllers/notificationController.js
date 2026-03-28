@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS = {
   appt_confirmed_sms:         false,
   payment_receipt_email:      true,
   payment_receipt_whatsapp:   true,
-  payment_receipt_sms:        false,
+  payment_receipt_sms:        true,
   loyalty_points_whatsapp:    true,
   loyalty_points_sms:         false,
   customer_registered_sms:    false,

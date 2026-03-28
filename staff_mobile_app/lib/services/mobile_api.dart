@@ -389,6 +389,7 @@ class MobileApi {
     String? staffId,
     String? customerId,
     String? customerName,
+    String? phone,
     required String totalAmount,
     required String loyaltyDiscount,
     required String method,
@@ -405,6 +406,7 @@ class MobileApi {
         if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
         if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
         if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
         'splits': [
           {
@@ -575,15 +577,22 @@ class MobileApi {
     return const [];
   }
 
-  Future<void> createWalkInCheckIn({
+  Future<WalkInEntry> createWalkInCheckIn({
     required String token,
     required String branchId,
     required String customerName,
     required String serviceId,
+    List<String>? serviceIds,
     String? phone,
     String? note,
     String? staffId,
   }) async {
+    final ids = serviceIds == null || serviceIds.isEmpty
+        ? <int>[]
+        : serviceIds
+            .map((id) => int.tryParse(id.trim()) ?? 0)
+            .where((n) => n > 0)
+            .toList();
     final response = await http.post(
       Uri.parse('$baseUrl/api/walkin/checkin'),
       headers: _authHeaders(token),
@@ -591,6 +600,7 @@ class MobileApi {
         'customerName': customerName.trim(),
         'branchId': int.tryParse(branchId) ?? branchId,
         'serviceId': int.tryParse(serviceId) ?? serviceId,
+        if (ids.isNotEmpty) 'serviceIds': ids,
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
         if (staffId != null && staffId.trim().isNotEmpty)
@@ -601,6 +611,10 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Walk-in check-in failed');
     }
+    if (body.isEmpty) {
+      throw Exception('Walk-in check-in returned empty response');
+    }
+    return WalkInEntry.fromJson(Map<String, dynamic>.from(body));
   }
 
   Future<void> assignWalkInStaff({

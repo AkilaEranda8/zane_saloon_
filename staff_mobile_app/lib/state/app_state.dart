@@ -243,6 +243,15 @@ class AppState extends ChangeNotifier {
     return loaded;
   }
 
+  /// Staff for a branch without mutating global cached staff (e.g. walk-in branch picker).
+  Future<List<StaffMember>> staffMembersForBranch(String branchId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load staff).');
+    }
+    return _api.fetchStaff(token: token, branchId: branchId);
+  }
+
   Future<List<Map<String, String>>> loadBranches() async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) return branches;
@@ -358,6 +367,7 @@ class AppState extends ChangeNotifier {
     String? staffId,
     String? customerId,
     String? customerName,
+    String? phone,
     required String totalAmount,
     required String loyaltyDiscount,
     required String method,
@@ -377,6 +387,7 @@ class AppState extends ChangeNotifier {
         staffId: staffId,
         customerId: customerId,
         customerName: customerName,
+        phone: phone,
         totalAmount: totalAmount,
         loyaltyDiscount: loyaltyDiscount,
         method: method,
@@ -404,10 +415,12 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<bool> addWalkIn({
+  /// Returns the created queue row (including `total_amount`) on success.
+  Future<WalkInEntry?> addWalkIn({
     required String branchId,
     required String customerName,
     required String serviceId,
+    List<String>? serviceIds,
     String? phone,
     String? note,
     String? staffId,
@@ -415,22 +428,22 @@ class AppState extends ChangeNotifier {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       _lastError = 'Missing auth token (cannot add walk-in).';
-      return false;
+      return null;
     }
     try {
-      await _api.createWalkInCheckIn(
+      return await _api.createWalkInCheckIn(
         token: token,
         branchId: branchId,
         customerName: customerName,
         serviceId: serviceId,
+        serviceIds: serviceIds,
         phone: phone,
         note: note,
         staffId: staffId,
       );
-      return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
-      return false;
+      return null;
     }
   }
 

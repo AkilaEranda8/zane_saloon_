@@ -11,6 +11,9 @@ const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { runAppointmentServicesMigration } = require('./services/appointmentServicesMigration');
 const { ensureUsersStaffIdColumn } = require('./services/ensureUsersStaffIdColumn');
+const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalAmountColumn');
+const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
+const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
 
 // Validate required env vars on startup
 validateEnv();
@@ -144,7 +147,10 @@ connectWithRetry().then(async () => {
   // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
   try {
     await ensureUsersStaffIdColumn();
+    await ensureWalkInTotalAmountColumn();
+    await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });
+    await ensureCustomerPhoneUniqueIndex();
     await runAppointmentServicesMigration();
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);

@@ -12,6 +12,7 @@ const Inventory          = require('./Inventory');
 const Attendance         = require('./Attendance');
 const Reminder           = require('./Reminder');
 const WalkIn             = require('./WalkIn');
+const WalkInQueueService = require('./WalkInQueueService');
 const Expense            = require('./Expense');
 const NotificationLog      = require('./NotificationLog');
 const NotificationSettings = require('./NotificationSettings');
@@ -104,6 +105,10 @@ WalkIn.belongsTo(Staff,   { foreignKey: 'staff_id',   as: 'staff' });
 Branch.hasMany(WalkIn,    { foreignKey: 'branch_id',  as: 'walkIns' });
 Service.hasMany(WalkIn,   { foreignKey: 'service_id', as: 'walkIns' });
 Staff.hasMany(WalkIn,     { foreignKey: 'staff_id',   as: 'walkIns' });
+WalkIn.hasMany(WalkInQueueService, { foreignKey: 'walk_in_id', as: 'walkInServices' });
+WalkInQueueService.belongsTo(WalkIn,   { foreignKey: 'walk_in_id', as: 'walkIn' });
+WalkInQueueService.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
+Service.hasMany(WalkInQueueService, { foreignKey: 'service_id', as: 'walkInQueueServices' });
 // ── Review ────────────────────────────────────────────────────────────────
 Review.belongsTo(Branch,  { foreignKey: 'branch_id',  as: 'branch' });
 Review.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
@@ -142,6 +147,7 @@ module.exports = {
   Attendance,
   Reminder,
   WalkIn,
+  WalkInQueueService,
   Expense,
   NotificationLog,
   NotificationSettings,

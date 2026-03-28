@@ -127,7 +127,7 @@ const DEFAULT_FLAGS = {
   appt_confirmed_sms:         false,
   payment_receipt_email:      true,
   payment_receipt_whatsapp:   true,
-  payment_receipt_sms:        false,
+  payment_receipt_sms:        true,
   loyalty_points_whatsapp:    true,
   loyalty_points_sms:         false,
   customer_registered_sms:    false,
@@ -461,8 +461,8 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
 // ── 2. Payment Receipt ────────────────────────────────────────────────────────
 async function notifyPaymentReceipt(payment, branch, service, customer) {
   const flags = await getChannelFlags();
-  const phone = customer?.phone || null;
-  const email = customer?.email || null;
+  const phone = customer?.phone ? String(customer.phone).trim() || null : null;
+  const email = customer?.email ? String(customer.email).trim() || null : null;
   if (!phone && !email) return;
 
   const customerName = customer?.name || payment.customer_name || 'Valued Customer';
@@ -531,7 +531,9 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 
-  if (phone && flags.payment_receipt_sms) {
+  // SMS receipt: same rule as walk-in token SMS — send when phone + Notify.lk creds (sendSMS).
+  // Do not gate on payment_receipt_sms: that flag stayed false in many DBs while token SMS worked.
+  if (phone) {
     let msg =
       `Zane Salon - Receipt\n` +
       `Hi ${customerName}! Total Paid: ${total}\n` +

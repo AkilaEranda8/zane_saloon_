@@ -1,11 +1,69 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { WalkIn, Service, Staff, Branch } = require('../models');
+const { WalkIn, Service, Staff, Branch, WalkInQueueService } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { sendSMS } = require('../services/notificationService');
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** Ordered unique positive integer ids. */
+function normalizeServiceIdList(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const out = [];
+  const seen = new Set();
+  for (const x of raw) {
+    const n = Number(x);
+    if (!Number.isNaN(n) && n > 0 && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * Loads services for ordered ids; returns { primaryId, totalAmount, durationSum }.
+ * @param {import('sequelize').Transaction} [transaction]
+ */
+async function totalsFromServiceIds(orderedIds, transaction) {
+  if (!orderedIds.length) {
+    return { primaryId: null, totalAmount: 0, durationSum: 30 };
+  }
+  const services = await Service.findAll({
+    where: { id: orderedIds },
+    transaction,
+  });
+  if (services.length !== orderedIds.length) {
+    throw Object.assign(new Error('One or more services not found.'), { status: 404 });
+  }
+  const byId = Object.fromEntries(services.map((s) => [s.id, s]));
+  let totalAmount = 0;
+  let durationSum = 0;
+  for (const id of orderedIds) {
+    const s = byId[id];
+    totalAmount += Number(s.price || 0);
+    durationSum += Number(s.duration_minutes || 30);
+  }
+  return { primaryId: orderedIds[0], totalAmount, durationSum };
+}
+
+async function replaceWalkInQueueServices(walkInId, orderedIds, transaction) {
+  await WalkInQueueService.destroy({ where: { walk_in_id: walkInId }, transaction });
+  if (!orderedIds.length) return;
+  const services = await Service.findAll({ where: { id: orderedIds }, transaction });
+  if (services.length !== orderedIds.length) {
+    throw Object.assign(new Error('One or more services not found.'), { status: 404 });
+  }
+  const byId = Object.fromEntries(services.map((s) => [s.id, s]));
+  const rows = orderedIds.map((sid, idx) => ({
+    walk_in_id: walkInId,
+    service_id: sid,
+    sort_order: idx,
+    line_price: Number(byId[sid]?.price || 0),
+  }));
+  await WalkInQueueService.bulkCreate(rows, { transaction });
+}
 
 // Helper: generate next token for a branch+date atomically inside a transaction
 async function generateToken(branchId, date, transaction) {
@@ -18,10 +76,18 @@ async function generateToken(branchId, date, transaction) {
   return 'T' + String(num).padStart(3, '0');
 }
 
-// Include options reused across queries
-const defaultInclude = [
+// Include options reused across queries (primary service + joined walk-in service lines)
+const fullWalkInInclude = [
   { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
   { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+  {
+    model: WalkInQueueService,
+    as: 'walkInServices',
+    attributes: ['id', 'service_id', 'sort_order', 'line_price'],
+    separate: true,
+    order: [['sort_order', 'ASC']],
+    include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] }],
+  },
 ];
 
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
@@ -40,7 +106,7 @@ exports.list = async (req, res) => {
 
     const queue = await WalkIn.findAll({
       where,
-      include: defaultInclude,
+      include: fullWalkInInclude,
       order: [['createdAt', 'ASC']],
     });
 
@@ -79,10 +145,13 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, note } = req.body;
+    const { customerName, phone, branchId, serviceId, serviceIds, note, staffId } = req.body;
 
-    if (!customerName || !branchId || !serviceId) {
-      return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
+    if (!customerName || !branchId) {
+      return res.status(400).json({ message: 'customerName and branchId are required.' });
+    }
+    if (!serviceId && !(Array.isArray(serviceIds) && serviceIds.length > 0)) {
+      return res.status(400).json({ message: 'serviceId or serviceIds is required.' });
     }
     if (req.userBranchId && Number(branchId) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied. You can only check in for your own branch.' });
@@ -93,31 +162,49 @@ exports.checkin = async (req, res) => {
     const result = await sequelize.transaction(async (t) => {
       const token = await generateToken(branchId, dateStr, t);
 
-      // Calculate estimated wait
-      const service = await Service.findByPk(serviceId, { transaction: t });
-      if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
+      const orderedIds = normalizeServiceIdList(serviceIds);
+      let primarySid;
+      let totalAmount = 0;
+      let durationSum = 30;
+
+      if (orderedIds.length > 0) {
+        const agg = await totalsFromServiceIds(orderedIds, t);
+        primarySid = agg.primaryId;
+        totalAmount = agg.totalAmount;
+        durationSum = agg.durationSum;
+      } else {
+        primarySid = Number(serviceId);
+        const service = await Service.findByPk(primarySid, { transaction: t });
+        if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
+        totalAmount = Number(service.price || 0);
+        durationSum = Number(service.duration_minutes || 30);
+      }
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
         transaction: t,
       });
-      const estimatedWait = waitingCount * (service.duration_minutes || 30);
+      const estimatedWait = waitingCount * durationSum;
 
       const entry = await WalkIn.create({
         token,
         customer_name: customerName,
         phone: phone || null,
         branch_id: branchId,
-        service_id: serviceId,
-        staff_id: null,
+        service_id: primarySid,
+        staff_id: staffId ? Number(staffId) : null,
         status: 'waiting',
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
         note: note || null,
+        total_amount: totalAmount,
       }, { transaction: t });
 
-      return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
+      const idsToPersist = orderedIds.length > 0 ? orderedIds : [primarySid];
+      await replaceWalkInQueueServices(entry.id, idsToPersist, t);
+
+      return WalkIn.findByPk(entry.id, { include: fullWalkInInclude, transaction: t });
     });
 
     const full = result;
@@ -190,7 +277,7 @@ exports.updateStatus = async (req, res) => {
     }
     await entry.save();
 
-    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    const full = await WalkIn.findByPk(id, { include: fullWalkInInclude });
     emitQueueUpdate(entry.branch_id, { action: 'statusChange', entry: full });
     res.json(full);
   } catch (err) {
@@ -218,7 +305,7 @@ exports.assign = async (req, res) => {
     entry.serve_start_time = new Date().toTimeString().slice(0, 8);
     await entry.save();
 
-    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    const full = await WalkIn.findByPk(id, { include: fullWalkInInclude });
     emitQueueUpdate(entry.branch_id, { action: 'assign', entry: full });
     res.json(full);
   } catch (err) {
@@ -231,7 +318,7 @@ exports.assign = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, phone, serviceId, note } = req.body;
+    const { customerName, phone, serviceId, serviceIds, note } = req.body;
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
@@ -246,18 +333,32 @@ exports.update = async (req, res) => {
       return res.status(400).json({ message: 'customerName cannot be empty.' });
     }
 
-    if (serviceId != null) {
+    const orderedIds = normalizeServiceIdList(serviceIds);
+    if (orderedIds.length > 0) {
+      const agg = await totalsFromServiceIds(orderedIds);
+      entry.service_id = agg.primaryId;
+      entry.total_amount = agg.totalAmount;
+    } else if (serviceId != null) {
       const service = await Service.findByPk(serviceId);
       if (!service) return res.status(404).json({ message: 'Service not found.' });
       entry.service_id = Number(serviceId);
+      entry.total_amount = Number(service.price || 0);
     }
 
     if (customerName != null) entry.customer_name = String(customerName).trim();
     if (phone !== undefined) entry.phone = phone || null;
     if (note !== undefined) entry.note = note || null;
 
-    await entry.save();
-    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    await sequelize.transaction(async (t) => {
+      await entry.save({ transaction: t });
+      if (orderedIds.length > 0) {
+        await replaceWalkInQueueServices(entry.id, orderedIds, t);
+      } else if (serviceId != null) {
+        await replaceWalkInQueueServices(entry.id, [Number(serviceId)], t);
+      }
+    });
+
+    const full = await WalkIn.findByPk(id, { include: fullWalkInInclude });
     emitQueueUpdate(entry.branch_id, { action: 'update', entry: full });
     res.json(full);
   } catch (err) {
