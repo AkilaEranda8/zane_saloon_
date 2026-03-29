@@ -43,6 +43,9 @@ export default function StaffPage() {
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
   const [loadErr, setLoadErr]         = useState('');
+  const [photoFile, setPhotoFile]       = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [removePhoto, setRemovePhoto]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,7 +73,16 @@ export default function StaffPage() {
     ? branches
     : branches.filter((b) => String(b.id) === String(myBranchId ?? ''));
 
-  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
+  const openAdd  = () => {
+    setEditItem(null);
+    setForm({ ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) });
+    setSpecs([]);
+    setPhotoFile(null);
+    setPhotoPreview('');
+    setRemovePhoto(false);
+    setFormErr('');
+    setShowForm(true);
+  };
   const openEdit = row => {
     const fromM2m = (row.branches && row.branches.length)
       ? row.branches.map((b) => String(b.id))
@@ -78,6 +90,9 @@ export default function StaffPage() {
     setEditItem(row);
     setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
     setSpecs((row.specializations||[]).map(s=>s.service_id));
+    setPhotoFile(null);
+    setPhotoPreview(row.photo_url || '');
+    setRemovePhoto(false);
     setFormErr('');
     setShowForm(true);
   };
@@ -105,7 +120,18 @@ export default function StaffPage() {
         specializations: specs,
       };
       delete payload.branch_id;
-      editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
+      const saved = editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
+      const staffId = editItem?.id || saved?.data?.id;
+      if (staffId && removePhoto) {
+        await api.delete(`/staff/${staffId}/photo`);
+      }
+      if (staffId && photoFile) {
+        const fd = new FormData();
+        fd.append('photo', photoFile);
+        await api.post(`/staff/${staffId}/photo`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
@@ -129,7 +155,7 @@ export default function StaffPage() {
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => (
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <StaffAvatar name={row.name} size={36} />
+          <StaffAvatar name={row.name} size={36} photoUrl={row.photo_url} />
           <div>
             <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{row.name}</div>
             <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.role_title}</div>
@@ -258,6 +284,40 @@ export default function StaffPage() {
         footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Staff'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <FormGroup label="Profile Photo">
+            <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+              <StaffAvatar
+                name={form.name || 'Staff'}
+                size={56}
+                photoUrl={removePhoto ? '' : (photoPreview || form.photo_url || '')}
+              />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setPhotoFile(f || null);
+                  if (f) {
+                    setPhotoPreview(URL.createObjectURL(f));
+                    setRemovePhoto(false);
+                  }
+                }}
+              />
+              {(photoPreview || form.photo_url) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoFile(null);
+                    setPhotoPreview('');
+                    setRemovePhoto(true);
+                  }}
+                  style={{ border:'1px solid #FECACA', color:'#DC2626', background:'#FEF2F2', borderRadius:8, padding:'4px 10px', cursor:'pointer' }}
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Full Name" required><Input value={form.name||''} onChange={e => setForm(f=>({...f, name:e.target.value}))} /></FormGroup>
             <FormGroup label="Phone"><Input value={form.phone||''} onChange={e => setForm(f=>({...f, phone:e.target.value}))} /></FormGroup>
@@ -309,7 +369,7 @@ export default function StaffPage() {
         {p && (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
             <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:24, padding:16, background:'#F9FAFB', borderRadius:12 }}>
-              <StaffAvatar name={p.name} size={64} />
+              <StaffAvatar name={p.name} size={64} photoUrl={p.photo_url} />
               <div>
                 <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#101828' }}>{p.name}</h2>
                 <p style={{ margin:'4px 0 8px', color:'#475467', fontSize:14 }}>{p.role_title}</p>

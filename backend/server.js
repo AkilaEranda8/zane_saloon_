@@ -16,6 +16,7 @@ const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServi
 const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
 const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
 const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
+const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const { ensurePaymentDiscountColumns } = require('./services/ensurePaymentDiscountColumns');
 const { startStaffMonthlyEarningsCron, isCronEnabled } = require('./services/staffMonthlyEarningsCron');
 
@@ -153,6 +154,7 @@ connectWithRetry().then(async () => {
   try {
     await ensureUsersStaffIdColumn();
     await ensureStaffEmailColumn();
+    await ensureStaffPhotoColumn();
     await ensurePaymentDiscountColumns();
     await ensureWalkInTotalAmountColumn();
     await runWalkInQueueServicesMigration();

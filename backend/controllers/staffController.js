@@ -1,4 +1,6 @@
 const { Op, fn, col, literal, where: sequelizeWhere } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
 const {
   Staff,
   StaffBranch,
@@ -10,6 +12,13 @@ const {
   User,
 } = require('../models');
 const { staffWhereForBranch, staffBelongsToBranch } = require('../utils/staffBranchFilter');
+
+function safeUnlinkUpload(relPath = '') {
+  if (!relPath || typeof relPath !== 'string') return;
+  if (!relPath.startsWith('/uploads/')) return;
+  const abs = path.join(__dirname, '..', relPath.replace(/^\//, ''));
+  fs.unlink(abs, () => {});
+}
 
 function normalizeBranchIds(body) {
   if (Array.isArray(body.branch_ids) && body.branch_ids.length) {
@@ -494,4 +503,56 @@ const setSpecializations = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, commissionSummary, commissionReport, myCommission, setSpecializations };
+const setPhoto = async (req, res) => {
+  try {
+    const staff = await Staff.findByPk(req.params.id);
+    if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+    if (req.userBranchId && !(await staffBelongsToBranch(staff.id, req.userBranchId))) {
+      return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
+    }
+    if (!req.file) return res.status(400).json({ message: 'Photo file is required.' });
+
+    const rel = `/uploads/staff/${req.file.filename}`;
+    const old = staff.photo_url;
+    await staff.update({ photo_url: rel });
+    safeUnlinkUpload(old);
+
+    return res.json({ message: 'Staff photo updated.', photo_url: rel, staff });
+  } catch (err) {
+    console.error('Staff setPhoto error:', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+};
+
+const removePhoto = async (req, res) => {
+  try {
+    const staff = await Staff.findByPk(req.params.id);
+    if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+    if (req.userBranchId && !(await staffBelongsToBranch(staff.id, req.userBranchId))) {
+      return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
+    }
+
+    const old = staff.photo_url;
+    await staff.update({ photo_url: null });
+    safeUnlinkUpload(old);
+
+    return res.json({ message: 'Staff photo removed.', staff });
+  } catch (err) {
+    console.error('Staff removePhoto error:', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+};
+
+module.exports = {
+  list,
+  getOne,
+  create,
+  update,
+  remove,
+  commissionSummary,
+  commissionReport,
+  myCommission,
+  setSpecializations,
+  setPhoto,
+  removePhoto,
+};
