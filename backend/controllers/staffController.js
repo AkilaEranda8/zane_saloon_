@@ -20,6 +20,23 @@ function safeUnlinkUpload(relPath = '') {
   fs.unlink(abs, () => {});
 }
 
+function toPublicUrl(req, relPath = '') {
+  if (!relPath || typeof relPath !== 'string') return relPath;
+  if (/^https?:\/\//i.test(relPath)) return relPath;
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const protoHdr = String(req.get('x-forwarded-proto') || req.protocol || 'http');
+  const proto = protoHdr.split(',')[0].trim() || 'http';
+  if (!host) return relPath;
+  return `${proto}://${host}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
+}
+
+function presentStaffRow(row, req) {
+  if (!row) return row;
+  const out = typeof row.toJSON === 'function' ? row.toJSON() : { ...row };
+  if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
+  return out;
+}
+
 function normalizeBranchIds(body) {
   if (Array.isArray(body.branch_ids) && body.branch_ids.length) {
     return [...new Set(body.branch_ids.map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n)))];
@@ -147,7 +164,7 @@ const list = async (req, res) => {
     });
     const data = await attachBranchesForStaffRows(rows);
 
-    return res.json({ total, page, limit, data });
+    return res.json({ total, page, limit, data: data.map((row) => presentStaffRow(row, req)) });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -168,7 +185,8 @@ const getOne = async (req, res) => {
     const apptCount = await Appointment.count({ where: { staff_id: staff.id } });
     const commSum = await Payment.sum('commission_amount', { where: { staff_id: staff.id } });
 
-    return res.json({ ...staff.toJSON(), apptCount, totalCommission: commSum || 0 });
+    const staffOut = presentStaffRow(staff, req);
+    return res.json({ ...staffOut, apptCount, totalCommission: commSum || 0 });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -209,7 +227,7 @@ const create = async (req, res) => {
     }
 
     const full = await Staff.findByPk(staff.id, { include: staffIncludeDetail() });
-    return res.status(201).json(full);
+    return res.status(201).json(presentStaffRow(full, req));
   } catch (err) {
     console.error('Staff create error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -297,7 +315,7 @@ const update = async (req, res) => {
     }
 
     const full = await Staff.findByPk(staff.id, { include: staffIncludeDetail() });
-    return res.json(full);
+    return res.json(presentStaffRow(full, req));
   } catch (err) {
     console.error('Staff update error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -517,7 +535,11 @@ const setPhoto = async (req, res) => {
     await staff.update({ photo_url: rel });
     safeUnlinkUpload(old);
 
-    return res.json({ message: 'Staff photo updated.', photo_url: rel, staff });
+    return res.json({
+      message: 'Staff photo updated.',
+      photo_url: toPublicUrl(req, rel),
+      staff: presentStaffRow(staff, req),
+    });
   } catch (err) {
     console.error('Staff setPhoto error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -536,7 +558,7 @@ const removePhoto = async (req, res) => {
     await staff.update({ photo_url: null });
     safeUnlinkUpload(old);
 
-    return res.json({ message: 'Staff photo removed.', staff });
+    return res.json({ message: 'Staff photo removed.', staff: presentStaffRow(staff, req) });
   } catch (err) {
     console.error('Staff removePhoto error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
