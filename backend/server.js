@@ -15,6 +15,7 @@ const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalA
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
 const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
+const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
 
 // Validate required env vars on startup
 validateEnv();
@@ -148,6 +149,7 @@ connectWithRetry().then(async () => {
   // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
   try {
     await ensureUsersStaffIdColumn();
+    await ensureStaffEmailColumn();
     await ensureWalkInTotalAmountColumn();
     await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });

@@ -38,9 +38,11 @@ export default function StaffPage() {
   const [specs, setSpecs]               = useState([]);
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
+  const [loadErr, setLoadErr]         = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr('');
     try {
       const [stR, brR, svR] = await Promise.all([
         api.get('/staff',    { params: { limit:200, ...(filterBranch ? { branchId: filterBranch } : {}) } }),
@@ -50,7 +52,11 @@ export default function StaffPage() {
       setStaff(Array.isArray(stR.data) ? stR.data : (stR.data?.data ?? []));
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data ?? []));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data ?? []));
-    } catch { }
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message || 'Failed to load data';
+      setLoadErr(msg);
+      setStaff([]);
+    }
     setLoading(false);
   }, [filterBranch]);
   useEffect(() => { load(); }, [load]);
@@ -215,6 +221,12 @@ export default function StaffPage() {
         <StatCard label="Inactive"     value={staff.length - activeCount} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
         <StatCard label="Branches"     value={[...new Set(staff.flatMap(s => [...(s.branches||[]).map(b=>b.id), s.branch_id].filter(Boolean)))].length} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
       </div>
+
+      {loadErr && (
+        <div style={{ background:'#FEF2F2', color:'#B91C1C', padding:'10px 14px', borderRadius:9, marginBottom:12, fontSize:13, border:'1px solid #FECACA' }}>
+          {loadErr}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <FilterBar>
