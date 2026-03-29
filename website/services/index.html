@@ -2,31 +2,178 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Zane Beauty Salon – Nail & Beauty</title>
+    <title>Services & Prices | Zane Beauty Salon</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Catamaran:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Catamaran:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-    />
-    <script>
-      (function () {
-        var p = window.location.pathname || '';
-        if (p === '/customer-portal' || p.indexOf('/customer-portal/') === 0) {
-          window.location.replace('https://main.zanesalon.com' + p + window.location.search + window.location.hash);
-        }
-      })();
-    </script>
-    <script type="module" crossorigin src="/assets/index-DC4k5wfG.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DNGJ4e7S.css" />
+    <style>
+      :root {
+        --bg: #faf8f4;
+        --card: #ffffff;
+        --ink: #1d1b16;
+        --muted: #8d8577;
+        --line: #e8e2d8;
+        --accent: #b88b4a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Catamaran, sans-serif;
+      }
+      .hero {
+        text-align: center;
+        padding: 56px 16px 34px;
+        border-bottom: 1px solid var(--line);
+        background: #fffdf9;
+      }
+      .hero h1 {
+        margin: 0 0 8px;
+        font-family: Cormorant, serif;
+        font-size: clamp(38px, 5vw, 64px);
+        font-weight: 500;
+      }
+      .hero p { margin: 0; color: var(--muted); font-size: 14px; }
+      .wrap {
+        max-width: 980px;
+        margin: 26px auto 70px;
+        padding: 0 16px;
+      }
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .back {
+        text-decoration: none;
+        color: #5f5648;
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        padding: 7px 12px;
+        font-size: 13px;
+      }
+      .status { color: var(--muted); font-size: 13px; }
+      .cat {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+      .cat-h {
+        margin: 0;
+        padding: 14px 16px 12px;
+        border-bottom: 1px solid var(--line);
+        font-family: Cormorant, serif;
+        font-size: 35px;
+        font-weight: 600;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px 16px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #f2ede4;
+      }
+      .row:last-child { border-bottom: 0; }
+      .name { font-weight: 700; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .price { color: var(--accent); font-weight: 700; align-self: center; }
+      .empty, .error {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .error { border-color: #f2cccc; color: #ad3f3f; background: #fff6f6; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <header class="hero">
+      <h1>Services & Prices</h1>
+      <p>Live service list loaded from the salon system.</p>
+    </header>
+
+    <main class="wrap">
+      <div class="toolbar">
+        <a class="back" href="/">← Back to Home</a>
+        <span id="status" class="status">Loading services...</span>
+      </div>
+      <section id="app"></section>
+    </main>
+
+    <script>
+      const app = document.getElementById("app");
+      const statusEl = document.getElementById("status");
+
+      function esc(v) {
+        return String(v ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function fmtPrice(v) {
+        const n = Number(v || 0);
+        return "Rs. " + n.toLocaleString("en-US");
+      }
+
+      function groupByCategory(rows) {
+        const map = new Map();
+        for (const s of rows) {
+          const cat = (s.category || "Other").trim() || "Other";
+          if (!map.has(cat)) map.set(cat, []);
+          map.get(cat).push(s);
+        }
+        return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      }
+
+      async function load() {
+        try {
+          const res = await fetch("/api/public/services", { credentials: "same-origin" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          const rows = Array.isArray(data) ? data : [];
+
+          if (!rows.length) {
+            app.innerHTML = '<div class="empty">No active services found.</div>';
+            statusEl.textContent = "0 services";
+            return;
+          }
+
+          const grouped = groupByCategory(rows);
+          app.innerHTML = grouped.map(([cat, items]) => `
+            <article class="cat">
+              <h2 class="cat-h">${esc(cat)}</h2>
+              ${items.map((s) => `
+                <div class="row">
+                  <div>
+                    <div class="name">${esc(s.name)}</div>
+                    <div class="meta">${esc(s.duration_minutes || 0)} min${s.description ? " • " + esc(s.description) : ""}</div>
+                  </div>
+                  <div class="price">${fmtPrice(s.price)}</div>
+                </div>
+              `).join("")}
+            </article>
+          `).join("");
+
+          statusEl.textContent = `${rows.length} services loaded`;
+        } catch (err) {
+          app.innerHTML = '<div class="error">Failed to load services from system. Please try again.</div>';
+          statusEl.textContent = "Load failed";
+        }
+      }
+
+      load();
+    </script>
   </body>
 </html>
