@@ -14,6 +14,18 @@ const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
 
+function toPublicUrl(req, relPath = '') {
+  if (!relPath || typeof relPath !== 'string') return relPath;
+  if (/^https?:\/\//i.test(relPath)) return relPath;
+  const storageBase = String(process.env.STORAGE_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (storageBase) return `${storageBase}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const protoHdr = String(req.get('x-forwarded-proto') || req.protocol || 'http');
+  const proto = protoHdr.split(',')[0].trim() || 'http';
+  if (!host) return relPath;
+  return `${proto}://${host}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
+}
+
 // ── GET /api/public/branches — active branches only ──────────────────────────
 router.get('/branches', async (req, res) => {
   try {
@@ -55,10 +67,16 @@ router.get('/staff', async (req, res) => {
     }
     const staff = await Staff.findAll({
       where,
-      attributes: ['id', 'name', 'role_title'],
+      attributes: ['id', 'name', 'role_title', 'photo_url'],
       order: [['name', 'ASC']],
     });
-    res.json(staff);
+    res.json(
+      staff.map((s) => {
+        const out = s.toJSON();
+        if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
+        return out;
+      }),
+    );
   } catch (err) {
     console.error('Public staff error:', err);
     res.status(500).json({ message: 'Server error' });
