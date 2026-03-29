@@ -24,11 +24,15 @@ export default function StaffPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
+  /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
+  const seesAllBranches = ['superadmin', 'admin'].includes(user?.role);
   const [staff, setStaff]               = useState([]);
   const [branches, setBranches]         = useState([]);
   const [services, setServices]         = useState([]);
   const [loading, setLoading]           = useState(true);
-  const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
+  const [filterBranch, setFilterBranch] = useState(
+    seesAllBranches ? '' : (user?.branch_id ?? user?.branchId ?? ''),
+  );
   const [search, setSearch]             = useState('');
   const [showForm, setShowForm]         = useState(false);
   const [showProfile, setShowProfile]   = useState(false);
@@ -231,7 +235,7 @@ export default function StaffPage() {
       {/* Filter Bar */}
       <FilterBar>
         <SearchBar value={search} onChange={setSearch} placeholder="Search staff" />
-        {isSuperAdmin && (
+        {seesAllBranches && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
             <option value="">All Branches</option>
