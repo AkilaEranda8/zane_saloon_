@@ -137,12 +137,29 @@
         return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       }
 
+      async function fetchServices() {
+        const endpoints = [
+          "/api/public/services",
+          "https://api.zanesalon.com/api/public/services",
+          "https://main.zanesalon.com/api/public/services",
+        ];
+        let lastErr = null;
+        for (const url of endpoints) {
+          try {
+            const res = await fetch(url, { credentials: "same-origin" });
+            if (!res.ok) throw new Error("HTTP " + res.status + " @ " + url);
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error("All service endpoints failed");
+      }
+
       async function load() {
         try {
-          const res = await fetch("/api/public/services", { credentials: "same-origin" });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          const data = await res.json();
-          const rows = Array.isArray(data) ? data : [];
+          const rows = await fetchServices();
 
           if (!rows.length) {
             app.innerHTML = '<div class="empty">No active services found.</div>';
@@ -168,6 +185,7 @@
 
           statusEl.textContent = `${rows.length} services loaded`;
         } catch (err) {
+          console.error("services load failed:", err);
           app.innerHTML = '<div class="error">Failed to load services from system. Please try again.</div>';
           statusEl.textContent = "Load failed";
         }
