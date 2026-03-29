@@ -477,6 +477,9 @@ router.post('/bookings', async (req, res) => {
     const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0
       ? service_ids
       : (service_id ? [service_id] : []);
+    const bookingName = String(customer_name || '').trim();
+    const bookingPhone = String(phone || '').trim();
+    const bookingEmail = email ? String(email).trim() : null;
 
     if (selectedServiceIds.length === 0) {
       return res.status(400).json({ message: 'At least one service is required' });
@@ -530,14 +533,40 @@ router.post('/bookings', async (req, res) => {
 
     const tx = await Appointment.sequelize.transaction();
     try {
+      // Link web bookings to existing customer profiles by phone
+      // so appointment history appears under the same customer.
+      const phoneVariants = buildPhoneVariants(bookingPhone);
+      let linkedCustomer = null;
+      if (phoneVariants.length) {
+        linkedCustomer = await Customer.findOne({
+          where: { phone: { [Op.or]: phoneVariants } },
+          transaction: tx,
+        });
+      }
+      if (!linkedCustomer) {
+        linkedCustomer = await Customer.create({
+          name: bookingName,
+          phone: bookingPhone,
+          email: bookingEmail || null,
+          branch_id: branch_id || null,
+        }, { transaction: tx });
+      } else {
+        const updates = {};
+        if (!String(linkedCustomer.name || '').trim() && bookingName) updates.name = bookingName;
+        if (!String(linkedCustomer.email || '').trim() && bookingEmail) updates.email = bookingEmail;
+        if (!linkedCustomer.branch_id && branch_id) updates.branch_id = branch_id;
+        if (Object.keys(updates).length) await linkedCustomer.update(updates, { transaction: tx });
+      }
+
       const created = [];
       for (const r of requestedRanges) {
         const appointment = await Appointment.create({
           branch_id,
+          customer_id: linkedCustomer?.id || null,
           service_id: r.service.id,
           staff_id,
-          customer_name: customer_name.trim(),
-          phone: phone.trim(),
+          customer_name: bookingName,
+          phone: bookingPhone,
           date,
           time: toHHMM(r.start),
           amount: r.service.price,
@@ -563,17 +592,17 @@ router.post('/bookings', async (req, res) => {
           const totalAmount = orderedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
           const summaryMsg =
             `Zane Salon - Booking Received\n` +
-            `Hi ${customer_name.trim()}, your booking is pending confirmation.\n` +
+            `Hi ${bookingName}, your booking is pending confirmation.\n` +
             `Date: ${date} ${firstTime}-${endTime}\n` +
             `Services: ${orderedServices.length} item(s)\n` +
             `Branch: ${branch?.name || 'Zane Salon'}\n` +
             `Total: Rs. ${totalAmount.toFixed(2)}`;
 
           await sendSMS({
-            to: phone.trim(),
+            to: bookingPhone,
             message: summaryMsg,
             meta: {
-              customer_name: customer_name.trim(),
+              customer_name: bookingName,
               event_type: 'appointment_confirmed',
               branch_id: branch_id || null,
             },
