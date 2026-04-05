@@ -17,9 +17,11 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
   const [query,  setQuery]  = useState('');
   const [open,   setOpen]   = useState(false);
   const [phone,  setPhone]  = useState('');
+  const [name,   setName]   = useState('');
   const [adding, setAdding] = useState(false);
   const ref = useRef(null);
 
+  const isPhone  = /^[\d+\-\s()]{3,}$/.test(query.trim());
   const selected = customers.find(c => String(c.id) === String(value));
   const filtered = query.length > 0
     ? customers.filter(c =>
@@ -27,7 +29,9 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
         c.phone?.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 8)
     : [];
-  const hasExact = customers.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
+  const hasExact = isPhone
+    ? customers.some(c => c.phone === query.trim())
+    : customers.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
   const showNew  = query.trim().length >= 2 && !hasExact;
 
   useEffect(() => {
@@ -36,20 +40,23 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
-  const pick  = c  => { onSelect(c.id); setQuery(''); setPhone(''); setOpen(false); };
-  const clear = e  => { e.stopPropagation(); onSelect(''); setQuery(''); setPhone(''); setOpen(false); };
+  const pick  = c  => { onSelect(c.id); setQuery(''); setPhone(''); setName(''); setOpen(false); };
+  const clear = e  => { e.stopPropagation(); onSelect(''); setQuery(''); setPhone(''); setName(''); setOpen(false); };
 
   const addNew = async () => {
+    const custName  = isPhone ? name.trim()  : query.trim();
+    const custPhone = isPhone ? query.trim() : phone.trim() || null;
+    if (!custName) return;
     setAdding(true);
     try {
       const res = await api.post('/customers', {
-        name: query.trim(),
-        phone: phone.trim() || null,
+        name: custName,
+        phone: custPhone,
         ...(branchId ? { branch_id: branchId } : {}),
       });
       onNew(res.data);
       onSelect(res.data.id);
-      setQuery(''); setPhone(''); setOpen(false);
+      setQuery(''); setPhone(''); setName(''); setOpen(false);
     } catch { }
     setAdding(false);
   };
@@ -91,17 +98,29 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
             <div style={{ padding:'10px 14px', background:'#F0FDF4', borderTop: filtered.length ? '1px solid #E4E7EC' : 'none' }}>
               <div style={{ fontSize:11, fontWeight:700, color:'#065F46', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Register "{query.trim()}" as new customer
+                {isPhone ? `Register new customer (📱 ${query.trim()})` : `Register "${query.trim()}" as new customer`}
               </div>
-              <div style={{ display:'flex', gap:8 }}>
-                <input value={phone} onChange={e => setPhone(e.target.value)}
-                  placeholder="Phone number" onMouseDown={e => e.stopPropagation()}
-                  style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
-                <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding}
-                  style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: adding ? 0.7 : 1 }}>
-                  {adding ? '…' : 'Add & Select'}
-                </button>
-              </div>
+              {isPhone ? (
+                <div style={{ display:'flex', gap:8 }}>
+                  <input value={name} onChange={e => setName(e.target.value)}
+                    placeholder="Full name *" onMouseDown={e => e.stopPropagation()}
+                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
+                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding || !name.trim()}
+                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity:(adding || !name.trim()) ? 0.5 : 1 }}>
+                    {adding ? '…' : 'Add & Select'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:8 }}>
+                  <input value={phone} onChange={e => setPhone(e.target.value)}
+                    placeholder="Mobile number" onMouseDown={e => e.stopPropagation()}
+                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
+                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding}
+                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: adding ? 0.7 : 1 }}>
+                    {adding ? '…' : 'Add & Select'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
