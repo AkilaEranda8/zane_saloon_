@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../models/staff_member.dart';
 import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
+import '../services/notification_service.dart';
 import '../utils/appointment_notes.dart';
 
 String _userFacingApiError(Object e) {
@@ -35,7 +37,14 @@ const String kStaffApiBaseUrl = String.fromEnvironment(
 );
 
 class AppState extends ChangeNotifier {
-  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl);
+  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl) {
+    NotificationService.instance.onTokenRefresh((newToken) {
+      final token = _currentUser?.authToken;
+      if (token != null && token.isNotEmpty) {
+        _api.registerFcmToken(token: token, fcmToken: newToken);
+      }
+    });
+  }
 
   static const _kAuthTokenKey = 'staff_auth_token';
   static const _kUserJsonKey = 'staff_user_json';
@@ -97,6 +106,9 @@ class AppState extends ChangeNotifier {
         await loadStaffList();
       } catch (_) {}
       await _refreshCurrentUserFromServer();
+      if (_currentUser?.authToken != null) {
+        unawaited(_registerFcmToken(_currentUser!.authToken!));
+      }
       notifyListeners();
     } catch (_) {
       await _clearPersistedSession();
@@ -193,6 +205,7 @@ class AppState extends ChangeNotifier {
         // Keep login successful even if staff list fails to preload.
       }
       await _persistSession(_currentUser!);
+      unawaited(_registerFcmToken(token));
       notifyListeners();
       return true;
     } catch (e) {
@@ -201,7 +214,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _registerFcmToken(String authToken) async {
+    try {
+      final fcmToken = await NotificationService.instance.getToken();
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await _api.registerFcmToken(token: authToken, fcmToken: fcmToken);
+      }
+    } catch (_) {}
+  }
+
   void logout() {
+    final token = _currentUser?.authToken;
+    if (token != null && token.isNotEmpty) {
+      _api.removeFcmToken(token: token);
+    }
     _currentUser = null;
     _customers.clear();
     _appointments.clear();
@@ -271,6 +297,33 @@ class AppState extends ChangeNotifier {
       ..addAll(loaded);
     notifyListeners();
     return customers;
+  }
+
+  /// Creates a customer and returns the created [Customer] object (or null on failure).
+  Future<Customer?> registerCustomer({
+    required String name,
+    required String phone,
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final effectiveBranchId = (branchId ?? _currentUser?.branchId)?.trim();
+      final customer = await _api.createCustomer(
+        token: token,
+        name: name,
+        phone: phone,
+        email: '',
+        branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty)
+            ? null
+            : effectiveBranchId,
+      );
+      _customers.insert(0, customer);
+      notifyListeners();
+      return customer;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> addCustomer({

@@ -9,6 +9,7 @@ const path         = require('path');
 const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
+const { startAppointmentReminderCron } = require('./services/appointmentReminderCron');
 
 // Validate required env vars on startup
 validateEnv();
@@ -98,6 +99,7 @@ app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
+app.use('/api/fcm-token',    require('./routes/fcmToken'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -136,6 +138,7 @@ connectWithRetry().then(async () => {
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);
   }
+  startAppointmentReminderCron();
   server.listen(PORT, () =>
     console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
   );

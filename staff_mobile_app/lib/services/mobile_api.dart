@@ -85,6 +85,34 @@ class MobileApi {
     return body;
   }
 
+  /// POST /api/fcm-token — registers the device FCM token for push notifications.
+  Future<void> registerFcmToken({
+    required String token,
+    required String fcmToken,
+    String? deviceInfo,
+  }) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/api/fcm-token'),
+        headers: _authHeaders(token),
+        body: jsonEncode({
+          'fcm_token': fcmToken,
+          if (deviceInfo != null) 'device_info': deviceInfo,
+        }),
+      );
+    } catch (_) {}
+  }
+
+  /// DELETE /api/fcm-token — removes the device FCM token on logout.
+  Future<void> removeFcmToken({required String token}) async {
+    try {
+      await http.delete(
+        Uri.parse('$baseUrl/api/fcm-token'),
+        headers: _authHeaders(token),
+      );
+    } catch (_) {}
+  }
+
   /// Active promo discounts for Record Payment (GET /api/discounts/payment).
   Future<List<Map<String, dynamic>>> fetchDiscountsForPayment({
     required String token,
