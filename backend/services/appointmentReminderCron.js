@@ -50,9 +50,14 @@ function startAppointmentReminderCron() {
         const timeLabel = appt.time ? String(appt.time).slice(0, 5) : '';
         const svcName   = appt.service?.name || 'Appointment';
 
-        // Fetch all FCM tokens registered for this branch
+        // Fetch tokens for this branch + tokens with no branch (admin/superadmin)
         const tokenRows = await StaffFcmToken.findAll({
-          where: { branch_id: branchId },
+          where: {
+            [Op.or]: [
+              { branch_id: branchId },
+              { branch_id: null },
+            ],
+          },
           attributes: ['fcm_token'],
         });
 
