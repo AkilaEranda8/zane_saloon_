@@ -185,7 +185,9 @@ class MobileApi {
     );
     final body = _decode(response.body);
     if (response.statusCode >= 400) return const [];
-    final list = body is List ? body : (body['data'] as List? ?? const []);
+    final List<dynamic> list = body is List
+        ? List<dynamic>.from(body as List)
+        : List<dynamic>.from((body as Map?)?['data'] as List? ?? const []);
     return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
