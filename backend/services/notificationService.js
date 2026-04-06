@@ -180,6 +180,7 @@ async function sendSMS({ to, message, meta = {} }) {
   const toFormatted = '94' + local.slice(-9);
   let status = 'sent', errorMsg = null;
   try {
+    const isUnicode = /[^\u0000-\u007F]/.test(message);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     let res;
@@ -194,6 +195,7 @@ async function sendSMS({ to, message, meta = {} }) {
           sender_id:  creds.senderId,
           to:         toFormatted,
           message,
+          ...(isUnicode ? { type: 'unicode' } : {}),
         }),
       });
     } finally {

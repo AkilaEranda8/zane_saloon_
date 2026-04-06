@@ -359,8 +359,14 @@ const sendOfferSms = async (req, res) => {
     if (!message) {
       return res.status(400).json({ message: 'Message is required.' });
     }
-    if (message.length > 480) {
-      return res.status(400).json({ message: 'Message is too long (max 480 characters).' });
+    const isUnicode = /[^\u0000-\u007F]/.test(message);
+    const maxLen    = isUnicode ? 335 : 480;
+    if (message.length > maxLen) {
+      return res.status(400).json({
+        message: isUnicode
+          ? `Sinhala/Unicode message is too long (max ${maxLen} characters — Unicode SMS uses 70 chars per part).`
+          : `Message is too long (max ${maxLen} characters).`,
+      });
     }
 
     const where = { id: customerIds };

@@ -16,6 +16,13 @@ export default function OfferSmsPage() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [message, setMessage] = useState('');
+
+  const isUnicode = /[^\u0000-\u007F]/.test(message);
+  const maxLen    = isUnicode ? 335 : 480;
+  const charsLeft = maxLen - message.length;
+  const smsParts  = isUnicode
+    ? Math.ceil(message.length / 70)  || 1
+    : Math.ceil(message.length / 160) || 1;
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -156,26 +163,50 @@ export default function OfferSmsPage() {
         </div>
 
         <div style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#101828', marginBottom: 10 }}>Message</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#101828' }}>Message</div>
+            {isUnicode && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+                background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A',
+              }}>🇱🇰 සිංහල / Unicode</span>
+            )}
+          </div>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your offer message here..."
-            maxLength={480}
+            placeholder="Type your offer message here... (supports Sinhala / සිංහල)"
+            maxLength={maxLen}
             rows={12}
             style={{
               width: '100%',
               borderRadius: 10,
-              border: '1px solid #E4E7EC',
+              border: `1px solid ${charsLeft < 20 ? '#FCA5A5' : '#E4E7EC'}`,
               padding: 12,
               fontSize: 13,
               resize: 'vertical',
               boxSizing: 'border-box',
             }}
           />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: '#667085' }}>
-            <span>Selected: {selectedIds.length}</span>
-            <span>{message.length}/480</span>
+          {isUnicode && (
+            <div style={{
+              marginTop: 6, padding: '8px 10px', borderRadius: 8,
+              background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 12, color: '#92400E',
+            }}>
+              ⚠️ Unicode SMS: 70 chars per part · Max 335 chars (5 parts) · Standard SMS: 160 chars/part
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 12, color: '#667085' }}>
+            <span>Selected: <strong>{selectedIds.length}</strong> customers</span>
+            <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ color: charsLeft < 20 ? '#DC2626' : '#667085' }}>
+                {message.length}/{maxLen}
+              </span>
+              <span style={{
+                padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                background: '#EFF6FF', color: '#2563EB',
+              }}>{smsParts} SMS part{smsParts > 1 ? 's' : ''}</span>
+            </span>
           </div>
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <Button onClick={handleSend} disabled={sending || loading}>
