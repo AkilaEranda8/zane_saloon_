@@ -111,7 +111,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   final _customerNameCtrl      = TextEditingController();
   final _staffNameCtrl         = TextEditingController();
   final _totalAmountCtrl       = TextEditingController();
-  final _loyaltyDiscountCtrl   = TextEditingController(text: '0');
   final _paidAmountCtrl        = TextEditingController();
   final _newPhoneCtrl          = TextEditingController();
 
@@ -139,7 +138,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     _customerNameCtrl.dispose();
     _staffNameCtrl.dispose();
     _totalAmountCtrl.dispose();
-    _loyaltyDiscountCtrl.dispose();
     _paidAmountCtrl.dispose();
     _newPhoneCtrl.dispose();
     super.dispose();
@@ -175,9 +173,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   void _applyNetToPaid() {
     final total = double.tryParse(_totalAmountCtrl.text.trim()) ?? 0;
-    final loyalty = double.tryParse(_loyaltyDiscountCtrl.text.trim()) ?? 0;
     final promo = _computedPromo();
-    final net = (total - loyalty - promo).clamp(0, double.infinity);
+    final net = (total - promo).clamp(0, double.infinity);
     _paidAmountCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
@@ -251,7 +248,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       staffId:        (_staffId ?? '').trim(),
       serviceIds:     _orderedServiceIds(),
       totalAmount:    _totalAmountCtrl.text.trim(),
-      loyaltyDiscount: _loyaltyDiscountCtrl.text.trim(),
+      loyaltyDiscount: '0',
       method:         _method,
       paidAmount:     _paidAmountCtrl.text.trim(),
       discountId:     _discountId,
@@ -830,17 +827,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
               ]),
 
               const SizedBox(height: 10),
-
-              // Discount
-              _label('DISCOUNT (LKR)'),
-              TextFormField(
-                controller: _loyaltyDiscountCtrl,
-                keyboardType: TextInputType.number,
-                decoration: _deco('0', Icons.discount_outlined),
-                onChanged: (_) => setState(_applyNetToPaid),
-              ),
-
-              const SizedBox(height: 12),
               _label('PROMO DISCOUNT'),
               DropdownButtonFormField<String>(
                   key: ValueKey<String>('promo_$_discountId'),
