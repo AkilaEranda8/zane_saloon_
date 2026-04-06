@@ -73,7 +73,7 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 const DEFAULT_FLAGS = {
   appt_confirmed_email:      true,
   appt_confirmed_whatsapp:   true,
-  appt_confirmed_sms:        false,
+  appt_confirmed_sms:        true,
   payment_receipt_email:     true,
   payment_receipt_whatsapp:  true,
   payment_receipt_sms:       true,
@@ -371,6 +371,17 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
       `Please arrive 5 mins early. See you soon! 😊`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
+
+  if (phone && flags.appt_confirmed_sms) {
+    const smsMsg =
+      `Zane Salon\n` +
+      `Hi ${appointment.customer_name}! Appointment booked.\n` +
+      `Service: ${svcName}\n` +
+      `Date: ${date} | ${time}\n` +
+      `Branch: ${brName}\n` +
+      `Thank you!`;
+    await sendSMS({ to: phone, message: smsMsg, meta });
+  }
 }
 
 // ── 2. Appointment Completed ────────────────────────────────────────────────
@@ -449,7 +460,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     await sendEmail({
       to:      email,
       subject: 'Payment Receipt — Zane Salon',
-      html:    buildEmailWrapper('Payment Receipt', body, brName, brPhone),
+      htmapl:    buildEmailWrapper('Payment Receipt', body, brName, brPhone),
       meta,
     });
   }
