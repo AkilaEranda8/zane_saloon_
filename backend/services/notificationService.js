@@ -190,7 +190,7 @@ async function sendSMS({ to, message, meta = {} }) {
         body:    JSON.stringify({
           user_id:    creds.userId,
           api_key:    creds.apiKey,
-          service_id: creds.senderId,
+          sender_id:  creds.senderId,
           to:         toFormatted,
           message,
         }),
