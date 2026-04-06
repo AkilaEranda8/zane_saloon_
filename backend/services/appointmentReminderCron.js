@@ -17,33 +17,24 @@ function getModels() {
  *   member's linked user token.
  * - If no staff is assigned, fall back to all tokens for the branch.
  */
-async function _resolveTokens(appt, StaffFcmToken, User) {
+async function _resolveTokens(appt, StaffFcmToken, Staff) {
   if (appt.staff_id) {
-    // Find the User whose staff_id links to this Staff row
-    const user = await User.findOne({
-      where: { staff_id: appt.staff_id },
-      attributes: ['id'],
-    });
-
-    if (user) {
+    // Staff.user_id → StaffFcmToken.user_id  (User has no staff_id column)
+    const staff = await Staff.findByPk(appt.staff_id, { attributes: ['id', 'user_id'] });
+    if (staff && staff.user_id) {
       const row = await StaffFcmToken.findOne({
-        where: { user_id: user.id },
+        where: { user_id: staff.user_id },
         attributes: ['fcm_token'],
       });
       if (row) return [row.fcm_token];
     }
-    // Staff assigned but no token registered for them — no notification
+    // Staff assigned but no linked user / token registered — no notification
     return [];
   }
 
   // No staff assigned → notify everyone registered for this branch
   const rows = await StaffFcmToken.findAll({
-    where: {
-      [Op.or]: [
-        { branch_id: appt.branch_id },
-        { branch_id: null },
-      ],
-    },
+    where: { branch_id: appt.branch_id },
     attributes: ['fcm_token'],
   });
   return rows.map((r) => r.fcm_token);
@@ -58,7 +49,7 @@ async function _resolveTokens(appt, StaffFcmToken, User) {
 function startAppointmentReminderCron() {
   cron.schedule('* * * * *', async () => {
     try {
-      const { Appointment, Service, StaffFcmToken, User } = getModels();
+      const { Appointment, Service, StaffFcmToken, Staff } = getModels();
 
       const now = new Date();
 
@@ -86,7 +77,7 @@ function startAppointmentReminderCron() {
         const timeLabel = appt.time ? String(appt.time).slice(0, 5) : '';
         const svcName   = appt.service?.name || 'Appointment';
 
-        const tokens = await _resolveTokens(appt, StaffFcmToken, User);
+        const tokens = await _resolveTokens(appt, StaffFcmToken, Staff);
         if (tokens.length === 0) continue;
 
         const title = `⏰ Upcoming Appointment in 15 min`;
