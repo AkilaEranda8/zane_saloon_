@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
+const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
@@ -27,7 +27,8 @@ const list = async (req, res) => {
       offset,
       order: [['name', 'ASC']],
       include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Branch, as: 'branch',   attributes: ['id', 'name', 'color'] },
+        { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
         {
           model: StaffSpecialization,
           as: 'specializations',
@@ -48,7 +49,8 @@ const getOne = async (req, res) => {
   try {
     const staff = await Staff.findByPk(req.params.id, {
       include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Branch, as: 'branch',   attributes: ['id', 'name', 'color'] },
+        { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
         {
           model: StaffSpecialization,
           as: 'specializations',
@@ -72,13 +74,24 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id, specializations } = req.body;
+    const { name, phone, role_title, commission_type, commission_value, join_date, user_id, specializations } = req.body;
+    // Accept branch_ids (array from frontend) or fallback to branch_id (single)
+    const branchIds = (req.body.branch_ids || []).map(Number).filter(Boolean);
+    const branch_id = branchIds[0] || Number(req.body.branch_id) || null;
 
     if (!name || !branch_id) {
-      return res.status(400).json({ message: 'Name and branch_id are required.' });
+      return res.status(400).json({ message: 'Name and branch are required.' });
     }
 
     const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id: user_id || null });
+
+    // Save all branch associations
+    if (branchIds.length) {
+      await StaffBranch.bulkCreate(
+        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid })),
+        { ignoreDuplicates: true },
+      );
+    }
 
     if (Array.isArray(specializations) && specializations.length) {
       const specs = specializations.map((sid) => ({ staff_id: staff.id, service_id: sid }));
@@ -103,13 +116,30 @@ const update = async (req, res) => {
     }
 
     const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active', 'user_id'];
-    // Only superadmin/admin can reassign to a different branch
-    if (['superadmin', 'admin'].includes(req.user?.role)) allowed.push('branch_id');
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+
+    // Handle branch_ids array or single branch_id
+    const branchIds = (req.body.branch_ids || []).map(Number).filter(Boolean);
+    if (branchIds.length) {
+      updates.branch_id = branchIds[0];
+    } else if (req.body.branch_id !== undefined) {
+      updates.branch_id = Number(req.body.branch_id);
+    }
+
     await staff.update(updates);
+
+    // Replace branch associations if branch_ids provided
+    if (branchIds.length) {
+      await StaffBranch.destroy({ where: { staff_id: staff.id } });
+      await StaffBranch.bulkCreate(
+        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid })),
+        { ignoreDuplicates: true },
+      );
+    }
+
     return res.json(staff);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

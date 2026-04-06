@@ -19,6 +19,7 @@ const Package              = require('./Package');
 const CustomerPackage      = require('./CustomerPackage');
 const PackageRedemption    = require('./PackageRedemption');
 const StaffFcmToken        = require('./StaffFcmToken');
+const StaffBranch          = require('./StaffBranch');
 const Discount             = require('./Discount');
 
 // ── Discount ─────────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ Staff.hasMany(Attendance,           { foreignKey: 'staff_id',  as: 'attendances'
 Staff.hasMany(Payment,              { foreignKey: 'staff_id',  as: 'payments' });
 Staff.belongsTo(User,               { foreignKey: 'user_id',   as: 'user', constraints: false });
 User.hasOne(Staff,                  { foreignKey: 'user_id',   as: 'staffProfile', constraints: false });
+Staff.belongsToMany(Branch,  { through: StaffBranch, foreignKey: 'staff_id',  otherKey: 'branch_id', as: 'branches' });
+Branch.belongsToMany(Staff,  { through: StaffBranch, foreignKey: 'branch_id', otherKey: 'staff_id',  as: 'staffMembers2' });
 
 // ── Service ───────────────────────────────────────────────────────────────────
 Service.hasMany(StaffSpecialization, { foreignKey: 'service_id', as: 'staffSpecializations' });
@@ -151,5 +154,6 @@ module.exports = {
   CustomerPackage,
   PackageRedemption,
   StaffFcmToken,
+  StaffBranch,
   Discount,
 };
