@@ -491,6 +491,7 @@ export default function PaymentsPage() {
         service_id: service_ids[0] || null,
         service_ids,
         subtotal,
+        promo_discount: promo,
         discount_id: form.discount_id || null,
       };
       if (editId) {

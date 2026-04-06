@@ -441,19 +441,27 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
   }
 
   if (phone && flags.payment_receipt_sms) {
-    const paid       = parseFloat(payment.total_amount || 0);
-    const grossBill  = paid + discount;
-    const totalPts   = customer?.loyalty_points || 0;
+    const paid        = parseFloat(payment.total_amount || 0);
+    const promoDisc   = parseFloat(payment.promo_discount || 0);
+    const totalDisc   = discount + promoDisc;
+    const grossBill   = paid + totalDisc;
+    const totalPts    = customer?.loyalty_points || 0;
     let smsMsg =
       `Zane Salon - Receipt\n` +
       `Hi ${customerName}!\n` +
       `Paid: Rs. ${paid.toFixed(2)}\n` +
       `Service: ${svcName} | ${date}`;
-    if (discount > 0) {
-      const ptsUsed    = Math.floor(discount);
-      const discStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
+    if (totalDisc > 0) {
       smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
-      smsMsg += `\nPromo -Rs.${discStr} (-${ptsUsed} pts)`;
+      if (promoDisc > 0) {
+        const pStr = promoDisc % 1 === 0 ? promoDisc.toFixed(0) : promoDisc.toFixed(2);
+        smsMsg += `\nPromo -Rs.${pStr}`;
+      }
+      if (discount > 0) {
+        const ptsUsed = Math.floor(discount);
+        const dStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
+        smsMsg += `\nLoyalty -Rs.${dStr} (-${ptsUsed} pts)`;
+      }
     }
     if (totalPts > 0) {
       const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';

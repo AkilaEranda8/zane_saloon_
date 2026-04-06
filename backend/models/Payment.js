@@ -39,6 +39,10 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
+  promo_discount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+  },
   points_earned: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

@@ -41,6 +41,9 @@ async function addIfMissing(table, column, definition) {
     await addIfMissing('notification_settings', 'smtp_from',               { type: DataTypes.STRING, allowNull: true });
     await addIfMissing('notification_settings', 'smtp_pass',               { type: DataTypes.TEXT, allowNull: true });
 
+    // ── payments missing columns ──────────────────────────────────────────────
+    await addIfMissing('payments', 'promo_discount', { type: DataTypes.DECIMAL(10, 2), defaultValue: 0, allowNull: true });
+
     // ── staff missing columns ────────────────────────────────────────────────
     await addIfMissing('staff', 'email', { type: DataTypes.STRING, allowNull: true });
 

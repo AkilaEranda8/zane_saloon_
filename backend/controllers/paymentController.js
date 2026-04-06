@@ -70,7 +70,7 @@ const create = async (req, res) => {
   try {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, splits = [], loyalty_discount = 0, usePoints = false,
+      customer_name, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
     } = req.body;
 
     if (!branch_id) {
@@ -107,7 +107,7 @@ const create = async (req, res) => {
       customer_id:    customer_id    || null,
       service_id:     service_id     || null,
       appointment_id: appointment_id || null,
-      customer_name, total_amount, loyalty_discount, points_earned,
+      customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
       commission_amount, date: today, status: 'paid',
     }, { transaction: t });
 
