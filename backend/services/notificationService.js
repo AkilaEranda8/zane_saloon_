@@ -453,8 +453,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
       smsMsg += `\nPromo -Rs.${discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2)}`;
     }
-    if (pointsEarned > 0) smsMsg += `\nEarned: +${pointsEarned} pts`;
-    if (totalPts > 0)     smsMsg += `\nTotal Points: ${totalPts} pts`;
+    if (totalPts > 0) {
+      const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';
+      smsMsg += `\nTotal Points: ${totalPts} pts${earnedSuffix}`;
+    }
     smsMsg += `\nThank you!`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
