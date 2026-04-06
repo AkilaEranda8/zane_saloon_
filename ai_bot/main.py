@@ -45,14 +45,18 @@ async def chat(req: ChatRequest, request: Request):
     session_id = req.session_id or str(uuid.uuid4())
     message    = req.message.strip()
 
-    # Extract JWT cookie forwarded from the browser — enables management queries
-    cookie_header = request.headers.get("cookie", "")
+    # Extract JWT — cookie (browser) or Authorization: Bearer (mobile app)
     token = None
-    for part in cookie_header.split(";"):
-        part = part.strip()
-        if part.startswith("token="):
-            token = part[len("token="):]
-            break
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):]
+    else:
+        cookie_header = request.headers.get("cookie", "")
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if part.startswith("token="):
+                token = part[len("token="):]
+                break
 
     if not message:
         return ChatResponse(

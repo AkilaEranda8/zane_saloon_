@@ -76,6 +76,16 @@ services:
     expose:
       - "80"
 
+  aibot:
+    build: ./ai_bot
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      SALON_API_URL: http://backend:5000/api
+    expose:
+      - "8000"
+
   phpmyadmin:
     image: phpmyadmin:5
     restart: unless-stopped

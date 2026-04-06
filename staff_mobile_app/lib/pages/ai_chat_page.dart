@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+
+import '../state/app_state.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _forest  = Color(0xFF1B3A2D);
@@ -33,7 +38,10 @@ class _AiChatPageState extends State<AiChatPage>
   final _scrollCtrl = ScrollController();
   final List<_Msg>  _msgs = [];
   bool _typing      = false;
+  String? _sessionId;
   late AnimationController _dotCtrl;
+
+  static const _aiBotUrl = 'https://api.zanesalon.com/ai/chat';
 
   @override
   void initState() {
@@ -54,47 +62,61 @@ class _AiChatPageState extends State<AiChatPage>
 
   void _send([String? override]) {
     final text = (override ?? _ctrl.text).trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _typing) return;
     setState(() {
       _msgs.insert(0, _Msg(text: text, fromUser: true));
       _typing = true;
     });
     _ctrl.clear();
+    _callBot(text);
+  }
 
-    // Simulate AI response
-    Future.delayed(const Duration(milliseconds: 1400), () {
+  Future<void> _callBot(String message) async {
+    final token = AppStateScope.of(context).currentUser?.authToken;
+    try {
+      final response = await http.post(
+        Uri.parse(_aiBotUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'message':    message,
+          if (_sessionId != null) 'session_id': _sessionId,
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _sessionId = data['session_id'] as String?;
+        final reply = data['reply'] as String? ?? 'No response from AI.';
+        setState(() {
+          _typing = false;
+          _msgs.insert(0, _Msg(text: reply, fromUser: false));
+        });
+      } else {
+        setState(() {
+          _typing = false;
+          _msgs.insert(0, _Msg(
+            text: 'AI bot error (${response.statusCode}). Please try again.',
+            fromUser: false,
+            isError: true,
+          ));
+        });
+      }
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _typing = false;
         _msgs.insert(0, _Msg(
-          text: _aiReply(text),
+          text: 'Could not reach AI bot. Check your connection.',
           fromUser: false,
+          isError: true,
         ));
       });
-    });
-  }
-
-  String _aiReply(String q) {
-    final lower = q.toLowerCase();
-    if (lower.contains('appointment')) {
-      return 'You have appointments scheduled for today. Connect the backend AI to get live data from your system.';
     }
-    if (lower.contains('revenue') || lower.contains('income')) {
-      return 'Your revenue dashboard is available on the Payments page. I can summarise it once connected to the backend.';
-    }
-    if (lower.contains('pending')) {
-      return 'I found some pending appointments. Head to the Appointments page to confirm them.';
-    }
-    if (lower.contains('walk')) {
-      return 'The Walk-in Queue page shows your live queue status. Backend AI integration coming soon.';
-    }
-    if (lower.contains('staff')) {
-      return 'Staff performance metrics will be available once the AI backend is connected.';
-    }
-    if (lower.contains('service') || lower.contains('top')) {
-      return 'Top performing services can be found in your analytics. Full AI insights coming soon!';
-    }
-    return 'Got it! I\'m your Zane Salon assistant. Connect me to the backend to get live insights, reports, and smart suggestions.';
   }
 
   void _clear() {
@@ -364,7 +386,7 @@ class _ChatBubble extends StatelessWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight)
                     : null,
-                color: isUser ? null : _surface,
+                color: isUser ? null : (msg.isError ? const Color(0xFFFEF2F2) : _surface),
                 borderRadius: BorderRadius.only(
                   topLeft:     const Radius.circular(18),
                   topRight:    const Radius.circular(18),
@@ -373,14 +395,14 @@ class _ChatBubble extends StatelessWidget {
                 ),
                 border: isUser
                     ? null
-                    : Border.all(color: _border),
+                    : Border.all(color: msg.isError ? const Color(0xFFFECACA) : _border),
                 boxShadow: [BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 6, offset: const Offset(0, 2))],
               ),
               child: Text(msg.text,
                 style: TextStyle(
-                  color: isUser ? Colors.white : _ink,
+                  color: isUser ? Colors.white : (msg.isError ? const Color(0xFFB91C1C) : _ink),
                   fontSize: 14, height: 1.45,
                   fontWeight: FontWeight.w500)),
             ),
@@ -539,7 +561,8 @@ class _SuggestionTile extends StatelessWidget {
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 class _Msg {
-  const _Msg({required this.text, required this.fromUser});
+  const _Msg({required this.text, required this.fromUser, this.isError = false});
   final String text;
   final bool fromUser;
+  final bool isError;
 }
