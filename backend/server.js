@@ -140,6 +140,17 @@ connectWithRetry().then(async () => {
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);
   }
+
+  // ── Column migrations (idempotent — safe to run on every start) ──────────
+  try {
+    await sequelize.query(
+      `ALTER TABLE staff ADD COLUMN IF NOT EXISTS user_id INT NULL DEFAULT NULL`
+    );
+    console.log('✓ Migration: staff.user_id column ensured.');
+  } catch (err) {
+    console.warn('⚠  Migration staff.user_id:', err.message);
+  }
+
   startAppointmentReminderCron();
   server.listen(PORT, () =>
     console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)

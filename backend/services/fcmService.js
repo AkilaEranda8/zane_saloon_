@@ -99,4 +99,52 @@ async function removeStaleToken(token) {
   }
 }
 
-module.exports = { sendToToken, sendToTokens };
+/**
+ * Send a push notification to a specific staff member via their linked user account.
+ * Requires the Staff record to have a user_id set (Staff <-> User relationship).
+ * @param {number|string} staffId  - staff.id (Staff table)
+ * @param {string} title
+ * @param {string} body
+ * @param {object} data
+ */
+async function notifyStaffUser(staffId, title, body, data = {}) {
+  if (!staffId) return;
+  try {
+    const { Staff, StaffFcmToken } = require('../models');
+    const staff = await Staff.findByPk(staffId, { attributes: ['id', 'user_id'] });
+    if (!staff || !staff.user_id) return;
+    const tokenRow = await StaffFcmToken.findOne({
+      where: { user_id: staff.user_id },
+      attributes: ['fcm_token'],
+    });
+    if (!tokenRow?.fcm_token) return;
+    await sendToToken(tokenRow.fcm_token, title, body, data);
+  } catch (err) {
+    console.error('[FCM] notifyStaffUser error:', err.message);
+  }
+}
+
+/**
+ * Send a push notification to all staff devices registered for a branch.
+ * @param {number|string} branchId
+ * @param {string} title
+ * @param {string} body
+ * @param {object} data  - optional string key-value payload
+ */
+async function notifyBranch(branchId, title, body, data = {}) {
+  if (!branchId) return;
+  try {
+    const { StaffFcmToken } = require('../models');
+    const rows = await StaffFcmToken.findAll({
+      where: { branch_id: branchId },
+      attributes: ['fcm_token'],
+    });
+    const tokens = rows.map((r) => r.fcm_token).filter(Boolean);
+    if (tokens.length === 0) return;
+    await sendToTokens(tokens, title, body, data);
+  } catch (err) {
+    console.error('[FCM] notifyBranch error:', err.message);
+  }
+}
+
+module.exports = { sendToToken, sendToTokens, notifyBranch, notifyStaffUser };

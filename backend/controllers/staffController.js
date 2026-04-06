@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment } = require('../models');
+const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
@@ -33,6 +33,7 @@ const list = async (req, res) => {
           as: 'specializations',
           include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
         },
+        { model: User, as: 'user', attributes: ['id', 'username', 'name', 'role'], required: false },
       ],
     });
 
@@ -53,6 +54,7 @@ const getOne = async (req, res) => {
           as: 'specializations',
           include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
         },
+        { model: User, as: 'user', attributes: ['id', 'username', 'name', 'role'], required: false },
       ],
     });
 
@@ -70,13 +72,13 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, branch_id, commission_type, commission_value, join_date, specializations } = req.body;
+    const { name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id, specializations } = req.body;
 
     if (!name || !branch_id) {
       return res.status(400).json({ message: 'Name and branch_id are required.' });
     }
 
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date });
+    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id: user_id || null });
 
     if (Array.isArray(specializations) && specializations.length) {
       const specs = specializations.map((sid) => ({ staff_id: staff.id, service_id: sid }));
@@ -100,7 +102,7 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
-    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
+    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active', 'user_id'];
     // Only superadmin/admin can reassign to a different branch
     if (['superadmin', 'admin'].includes(req.user?.role)) allowed.push('branch_id');
     const updates = {};

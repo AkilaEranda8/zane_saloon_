@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Appointment, Branch, Customer, Staff, Service } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
+const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -137,6 +138,23 @@ const create = async (req, res) => {
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
 
+    // Push notification to all branch staff
+    const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
+    notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
+      type: 'new_appointment',
+      appointment_id: String(appt.id),
+      branch_id: String(branch_id),
+    });
+
+    // If assigned to a specific staff, send them a direct push too
+    if (staff_id) {
+      notifyStaffUser(staff_id, '📅 Assigned to You', `${appt.customer_name} — ${timeLabel}`, {
+        type: 'appointment_assigned',
+        appointment_id: String(appt.id),
+        branch_id: String(branch_id),
+      });
+    }
+
     return res.status(201).json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -206,6 +224,15 @@ const changeStatus = async (req, res) => {
         Service.findByPk(appt.service_id, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentCompleted(appt, branch, service);
+    }
+
+    // Push notification for cancellation
+    if (status === 'cancelled') {
+      notifyBranch(appt.branch_id, '❌ Appointment Cancelled', appt.customer_name, {
+        type: 'appointment_cancelled',
+        appointment_id: String(appt.id),
+        branch_id: String(appt.branch_id),
+      });
     }
 
     // Auto-create next recurring appointment when completed

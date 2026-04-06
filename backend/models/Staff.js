@@ -39,6 +39,12 @@ const Staff = sequelize.define('Staff', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  user_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Optional link to a users.id login account for this staff member',
+  },
 }, {
   tableName: 'staff',
   timestamps: true,

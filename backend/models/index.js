@@ -43,6 +43,8 @@ Staff.hasMany(StaffSpecialization,  { foreignKey: 'staff_id',  as: 'specializati
 Staff.hasMany(Appointment,          { foreignKey: 'staff_id',  as: 'appointments' });
 Staff.hasMany(Attendance,           { foreignKey: 'staff_id',  as: 'attendances' });
 Staff.hasMany(Payment,              { foreignKey: 'staff_id',  as: 'payments' });
+Staff.belongsTo(User,               { foreignKey: 'user_id',   as: 'user', constraints: false });
+User.hasOne(Staff,                  { foreignKey: 'user_id',   as: 'staffProfile', constraints: false });
 
 // ── Service ───────────────────────────────────────────────────────────────────
 Service.hasMany(StaffSpecialization, { foreignKey: 'service_id', as: 'staffSpecializations' });

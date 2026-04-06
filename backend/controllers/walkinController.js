@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { WalkIn, Service, Staff } = require('../models');
 const { emitQueueUpdate } = require('../socket');
+const { notifyBranch } = require('../services/fcmService');
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
@@ -109,6 +110,14 @@ exports.checkin = async (req, res) => {
     const full = result;
 
     emitQueueUpdate(branchId, { action: 'checkin', entry: full });
+
+    // Push notification to all branch staff
+    notifyBranch(branchId, '🚶 New Walk-In', `${customerName} — Token ${full.token}`, {
+      type: 'new_walkin',
+      walkin_id: String(full.id),
+      branch_id: String(branchId),
+    });
+
     res.status(201).json(full);
   } catch (err) {
     if (err.status === 404) return res.status(404).json({ message: err.message });
