@@ -70,7 +70,7 @@ const create = async (req, res) => {
   try {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, phone, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
+      customer_name, phone, walkin_token, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
     } = req.body;
 
     if (!branch_id) {
@@ -182,7 +182,7 @@ const create = async (req, res) => {
       ]);
       const walkinCustomer = { name: customer_name || 'Guest', phone, email: null, loyalty_points: 0 };
       notifyPaymentReceipt(
-        { ...payment.toJSON(), splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
+        { ...payment.toJSON(), walkin_token, splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
         branch, service, walkinCustomer
       );
     }

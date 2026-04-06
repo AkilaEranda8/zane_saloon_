@@ -538,6 +538,7 @@ class AppState extends ChangeNotifier {
     required String method,
     required String paidAmount,
     String? discountId,
+    String? walkinToken,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -560,6 +561,7 @@ class AppState extends ChangeNotifier {
         method: method,
         paidAmount: paidAmount,
         discountId: discountId,
+        walkinToken: walkinToken,
       );
       return true;
     } catch (e) {

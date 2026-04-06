@@ -446,8 +446,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     const totalDisc   = discount + promoDisc;
     const grossBill   = paid + totalDisc;
     const totalPts    = customer?.loyalty_points || 0;
+    const ticketLine = payment.walkin_token ? `Ticket: ${payment.walkin_token}\n` : '';
     let smsMsg =
       `Zane Salon - Receipt\n` +
+      `${ticketLine}` +
       `Hi ${customerName}!\n` +
       `Paid: Rs. ${paid.toFixed(2)}\n` +
       `Service: ${svcName} | ${date}`;

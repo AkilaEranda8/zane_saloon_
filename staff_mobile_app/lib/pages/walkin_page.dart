@@ -380,6 +380,7 @@ class _WalkInPageState extends State<WalkInPage> {
       staffId:        e.staffId.isEmpty ? null : e.staffId,
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
+      walkinToken:    e.token.trim().isEmpty ? null : e.token.trim(),
       totalAmount:    payload.subtotal,
       loyaltyDiscount: payload.loyaltyDiscount,
       promoDiscount:   payload.promoDiscount,

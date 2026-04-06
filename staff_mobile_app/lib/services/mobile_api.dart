@@ -465,6 +465,7 @@ class MobileApi {
     required String method,
     required String paidAmount,
     String? discountId,
+    String? walkinToken,
   }) async {
     final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
     final paid = double.tryParse(paidAmount.trim()) ?? 0;
@@ -480,6 +481,7 @@ class MobileApi {
         if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
         if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (walkinToken != null && walkinToken.trim().isNotEmpty) 'walkin_token': walkinToken.trim(),
         'subtotal': subtotal,
         if (discountId != null && discountId.trim().isNotEmpty)
           'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
