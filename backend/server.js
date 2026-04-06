@@ -9,7 +9,7 @@ const path         = require('path');
 const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
-const { startAppointmentReminderCron } = require('./services/appointmentReminderCron');
+const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
 
 // Validate required env vars on startup
 validateEnv();
@@ -159,6 +159,7 @@ connectWithRetry().then(async () => {
   }
 
   startAppointmentReminderCron();
+  startReminderDueCron();
   server.listen(PORT, () =>
     console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
   );

@@ -1,4 +1,5 @@
 const { Reminder, Branch } = require('../models');
+const { notifyBranch } = require('../services/fcmService');
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -33,6 +34,17 @@ const create = async (req, res) => {
     if (!branch_id || !title) return res.status(400).json({ message: 'branch_id and title are required.' });
 
     const reminder = await Reminder.create({ branch_id, title, type, priority, due_date });
+
+    // Push to all branch staff
+    const dueLine = due_date ? ` — Due ${due_date}` : '';
+    const typeEmoji = { general: '📝', inventory: '📦', staff: '👤', customer: '👥' };
+    const emoji = typeEmoji[type] || '📝';
+    notifyBranch(branch_id, `${emoji} New Reminder`, `${title}${dueLine}`, {
+      type: 'new_reminder',
+      reminder_id: String(reminder.id),
+      branch_id:   String(branch_id),
+    });
+
     return res.status(201).json(reminder);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
