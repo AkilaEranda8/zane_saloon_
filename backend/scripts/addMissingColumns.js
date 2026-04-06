@@ -41,6 +41,9 @@ async function addIfMissing(table, column, definition) {
     await addIfMissing('notification_settings', 'smtp_from',               { type: DataTypes.STRING, allowNull: true });
     await addIfMissing('notification_settings', 'smtp_pass',               { type: DataTypes.TEXT, allowNull: true });
 
+    // ── appointments status ENUM — add in_service ────────────────────────────
+    await sequelize.query(`ALTER TABLE appointments MODIFY COLUMN status ENUM('pending','confirmed','in_service','completed','cancelled') NOT NULL DEFAULT 'pending'`).catch(e => console.warn('  ! appointments.status ENUM:', e.message));
+
     // ── payments missing columns ──────────────────────────────────────────────
     await addIfMissing('payments', 'promo_discount', { type: DataTypes.DECIMAL(10, 2), defaultValue: 0, allowNull: true });
 
