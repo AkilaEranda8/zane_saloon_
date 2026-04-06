@@ -174,6 +174,21 @@ class MobileApi {
     return Customer.fromJson(body);
   }
 
+  /// GET /api/packages/customer/:id/active — active packages for a customer.
+  Future<List<Map<String, dynamic>>> fetchActivePackages({
+    required String token,
+    required String customerId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/packages/customer/$customerId/active'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) return const [];
+    final list = body is List ? body : (body['data'] as List? ?? const []);
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
   Future<List<SalonService>> fetchServices({required String token}) async {
     final response = await http.get(
       Uri.parse('$baseUrl/api/services?limit=200'),

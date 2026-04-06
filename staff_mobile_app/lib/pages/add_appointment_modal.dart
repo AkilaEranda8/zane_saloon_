@@ -4,6 +4,7 @@ import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../state/app_state.dart';
+import '../utils/appointment_notes.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Sentinel id for "Register new customer" autocomplete option ──────────────
@@ -61,6 +62,11 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   String _time     = '';
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+
+  List<Map<String, dynamic>> _customerPackages = [];
+  String  _selectedPkgId   = '';
+  String  _selectedPkgName = '';
+  bool    _loadingPackages  = false;
 
   bool get _isSuper =>
       AppStateScope.of(context).currentUser?.role == 'superadmin';
@@ -191,6 +197,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     });
   }
 
+  Future<void> _loadCustomerPackages(String custId) async {
+    if (custId.isEmpty) return;
+    setState(() { _loadingPackages = true; _customerPackages = []; });
+    final app  = AppStateScope.of(context);
+    final pkgs = await app.loadCustomerActivePackages(custId);
+    if (!mounted) return;
+    setState(() { _customerPackages = pkgs; _loadingPackages = false; });
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_orderedServiceIds().isEmpty) {
@@ -204,6 +219,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
         ? _branchId : (app.currentUser?.branchId ?? '');
     if (branch.trim().isEmpty) { _snack('Branch required'); return; }
 
+    final pkgNote = _selectedPkgId.isNotEmpty
+        ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
+        : '';
+
     setState(() => _saving = true);
     final ok = await app.saveAppointment(
       branchId: branch,
@@ -214,7 +233,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       date: _date,
       time: _time,
       staffId: _staffId,
-      baseNotes: '',
+      baseNotes: pkgNote,
       status: '',
       amountOverride: _amtCtrl.text.trim(),
     );
@@ -471,12 +490,16 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         return;
                       }
                       setState(() {
-                        _namCtrl.text = c.name;
-                        _phCtrl.text  = c.phone;
-                        _custId       = c.id;
-                        _registerMode = false;
-                        _registered   = false;
+                        _namCtrl.text    = c.name;
+                        _phCtrl.text     = c.phone;
+                        _custId          = c.id;
+                        _registerMode    = false;
+                        _registered      = false;
+                        _selectedPkgId   = '';
+                        _selectedPkgName = '';
+                        _customerPackages = [];
                       });
+                      _loadCustomerPackages(c.id);
                     },
                     fieldViewBuilder: (ctx, ctrl, fn, _) {
                       ctrl.text = _namCtrl.text;
@@ -636,7 +659,89 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     ),
                   ],
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+
+                  // Customer Package
+                  if (_custId.isNotEmpty) ...[  
+                    _label('CUSTOMER PACKAGE (OPTIONAL)'),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: _cBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _selectedPkgId.isNotEmpty ? _cMid : _cBorder,
+                          width: _selectedPkgId.isNotEmpty ? 1.8 : 1,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                      child: _loadingPackages
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Row(children: [
+                                SizedBox(width: 16, height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: _cMid)),
+                                SizedBox(width: 10),
+                                Text('Loading packages…', style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+                              ]),
+                            )
+                          : DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedPkgId.isEmpty ? '' : _selectedPkgId,
+                                isExpanded: true,
+                                icon: const Icon(Icons.expand_more_rounded, color: _cMid, size: 20),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: '',
+                                    child: Text(
+                                      _customerPackages.isEmpty
+                                          ? 'No active packages'
+                                          : 'No package / normal appointment',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: _customerPackages.isEmpty
+                                            ? const Color(0xFFD1D5DB)
+                                            : const Color(0xFF6B7280),
+                                      ),
+                                    ),
+                                  ),
+                                  ..._customerPackages.map((pkg) {
+                                    final pkgData = pkg['package'] as Map? ?? {};
+                                    final name    = '${pkgData['name'] ?? 'Package'}';
+                                    final rem     = pkg['sessions_remaining'];
+                                    final label   = rem == null ? 'Unlimited' : '$rem left';
+                                    return DropdownMenuItem<String>(
+                                      value: '${pkg['id']}',
+                                      child: Text('$name · $label',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 13)),
+                                    );
+                                  }),
+                                ],
+                                onChanged: _customerPackages.isEmpty ? null : (val) {
+                                  final sel = _customerPackages.firstWhere(
+                                    (p) => '${p['id']}' == val,
+                                    orElse: () => {},
+                                  );
+                                  setState(() {
+                                    _selectedPkgId = val ?? '';
+                                    if (sel.isNotEmpty) {
+                                      final pkgData = sel['package'] as Map? ?? {};
+                                      _selectedPkgName = '${pkgData['name'] ?? ''}';
+                                      final price = pkgData['package_price'];
+                                      if (price != null) {
+                                        _amtCtrl.text = '$price';
+                                      }
+                                    } else {
+                                      _selectedPkgName = '';
+                                      _updateTotal();
+                                    }
+                                  });
+                                },
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
 
                   // Services (dropdown)
                   WalkInServiceDropdownSection(

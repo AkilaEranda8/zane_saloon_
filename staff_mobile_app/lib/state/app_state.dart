@@ -406,6 +406,16 @@ class AppState extends ChangeNotifier {
     return _api.fetchStaff(token: token, branchId: branchId);
   }
 
+  Future<List<Map<String, dynamic>>> loadCustomerActivePackages(String customerId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty || customerId.isEmpty) return const [];
+    try {
+      return await _api.fetchActivePackages(token: token, customerId: customerId);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<List<Map<String, String>>> loadBranches() async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) return branches;
