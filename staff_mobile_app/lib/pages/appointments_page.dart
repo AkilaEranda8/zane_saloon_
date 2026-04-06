@@ -1989,35 +1989,33 @@ class _PaySheetState extends State<_PaySheet> {
                     }).toList(),
             ),
 
-            if (widget.discounts.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              _label('PROMO DISCOUNT'),
-              DropdownButtonFormField<String>(
-                key: ValueKey<String>('appt_promo_$_discountId'),
-                initialValue: _discountId.isEmpty
-                    ? ''
-                    : widget.discounts.any((d) => '${d['id']}' == _discountId)
-                        ? _discountId
-                        : '',
-                isExpanded: true,
-                decoration: _deco('Select promo (optional)', Icons.local_offer_rounded),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('None')),
-                  ...widget.discounts.map((d) => DropdownMenuItem(
-                        value: '${d['id']}',
-                        child: Text(
-                          '${d['name'] ?? ''} (${d['discount_type'] == 'fixed' ? 'Rs. ${d['value']}' : '${d['value']}% off'})',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      )),
-                ],
-                onChanged: (v) {
-                  setState(() => _discountId = v ?? '');
-                  _recalc();
-                },
-              ),
-            ],
+            const SizedBox(height: 14),
+            _label('PROMO DISCOUNT'),
+            DropdownButtonFormField<String>(
+              key: ValueKey<String>('appt_promo_$_discountId'),
+              initialValue: _discountId.isEmpty
+                  ? ''
+                  : widget.discounts.any((d) => '${d['id']}' == _discountId)
+                      ? _discountId
+                      : '',
+              isExpanded: true,
+              decoration: _deco('Select promo (optional)', Icons.local_offer_rounded),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('None')),
+                ...widget.discounts.map((d) => DropdownMenuItem(
+                      value: '${d['id']}',
+                      child: Text(
+                        '${d['name'] ?? ''} (${d['discount_type'] == 'fixed' ? 'Rs. ${d['value']}' : '${d['value']}% off'})',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    )),
+              ],
+              onChanged: (v) {
+                setState(() => _discountId = v ?? '');
+                _recalc();
+              },
+            ),
 
             const SizedBox(height: 14),
 
