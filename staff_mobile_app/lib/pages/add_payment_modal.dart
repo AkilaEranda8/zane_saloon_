@@ -5,6 +5,9 @@ import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
+// ── Sentinel id used to represent "Register new customer" option ──────────────
+const String _kNewCustId = '__register_new__';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _pGreen  = Color(0xFF059669);
 const Color _pGreenL = Color(0xFFECFDF5);
@@ -47,6 +50,7 @@ class AddPaymentModal extends StatefulWidget {
     required this.services,
     this.discounts = const [],
     this.initialBranchId,
+    this.onRegisterNewCustomer,
     super.key,
   });
 
@@ -57,6 +61,9 @@ class AddPaymentModal extends StatefulWidget {
   /// Active promo rows from GET /api/discounts/payment
   final List<Map<String, dynamic>> discounts;
   final String? initialBranchId;
+  /// Called when user taps "Add & Select" for a new customer.
+  /// Returns the created [Customer] or null on failure.
+  final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
 
   static Future<AddPaymentModalResult?> show(
     BuildContext context, {
@@ -66,6 +73,7 @@ class AddPaymentModal extends StatefulWidget {
     required List<SalonService> services,
     List<Map<String, dynamic>> discounts = const [],
     String? initialBranchId,
+    Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
   }) {
     return showModalBottomSheet<AddPaymentModalResult>(
       context: context,
@@ -78,6 +86,7 @@ class AddPaymentModal extends StatefulWidget {
         services: services,
         discounts: discounts,
         initialBranchId: initialBranchId,
+        onRegisterNewCustomer: onRegisterNewCustomer,
       ),
     );
   }
@@ -104,10 +113,14 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   final _totalAmountCtrl       = TextEditingController();
   final _loyaltyDiscountCtrl   = TextEditingController(text: '0');
   final _paidAmountCtrl        = TextEditingController();
+  final _newPhoneCtrl          = TextEditingController();
 
   String? _branchId;
   String _customerId = '';
   Customer? _linkedCustomer;
+  Customer? _newlyRegistered;
+  bool _registerMode = false;
+  bool _registering  = false;
   String? _staffId;
   StaffMember? _linkedStaff;
   String? _primaryServiceId;
@@ -128,6 +141,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     _totalAmountCtrl.dispose();
     _loyaltyDiscountCtrl.dispose();
     _paidAmountCtrl.dispose();
+    _newPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -184,18 +198,50 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     _applyNetToPaid();
   }
 
+  Future<void> _doRegister() async {
+    final fn = widget.onRegisterNewCustomer;
+    if (fn == null) return;
+    final name = _customerNameCtrl.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _registering = true);
+    final newCust = await fn(name, _newPhoneCtrl.text.trim(), _branchId);
+    if (!mounted) return;
+    if (newCust != null) {
+      setState(() {
+        _newlyRegistered = newCust;
+        _linkedCustomer  = newCust;
+        _customerId      = newCust.id;
+        _registerMode    = false;
+        _registering     = false;
+        _newPhoneCtrl.clear();
+      });
+    } else {
+      setState(() => _registering = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Failed to register customer. Try again.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     if (_customerId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select a customer from the list before recording payment.'),
+        SnackBar(
+          content: Text(_registerMode
+              ? 'Tap "Add & Select" to register the new customer first.'
+              : 'Search and select a customer, or register a new one.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
-    final cust = widget.customers.firstWhere(
+    final allCusts = [
+      ?_newlyRegistered,
+      ...widget.customers,
+    ];
+    final cust = allCusts.firstWhere(
       (c) => c.id == _customerId,
       orElse: () => Customer(id: '', name: 'Walk-in', phone: '', email: ''),
     );
@@ -358,30 +404,56 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 const SizedBox(height: 12),
               ],
 
-              // ── Customer (must pick from list — same rule as web Record Payment) ───
+              // ── Customer — search existing or register new inline ─────
               _label('CUSTOMER *'),
               Autocomplete<Customer>(
                 optionsBuilder: (val) {
-                  final q = val.text.trim().toLowerCase();
+                  final q   = val.text.trim().toLowerCase();
                   final all = widget.customers;
-                  if (q.isEmpty) return all.take(10);
-                  return all
-                      .where((c) {
-                        final name = c.name.toLowerCase();
-                        final phone = c.phone.replaceAll(RegExp(r'\s'), '');
-                        final email = c.email.toLowerCase();
-                        final qq = q.replaceAll(RegExp(r'\s'), '');
-                        return name.contains(q) ||
-                            phone.contains(qq) ||
-                            email.contains(q);
-                      })
-                      .take(15);
+                  List<Customer> matches;
+                  if (q.isEmpty) {
+                    matches = all.take(10).toList();
+                  } else {
+                    final qq = q.replaceAll(RegExp(r'\s'), '');
+                    matches = all.where((c) {
+                      return c.name.toLowerCase().contains(q) ||
+                          c.phone.replaceAll(RegExp(r'\s'), '').contains(qq) ||
+                          c.email.toLowerCase().contains(q);
+                    }).take(15).toList();
+                  }
+                  // Append sentinel "register new" when no exact match & ≥2 chars
+                  final hasExact = all.any(
+                      (c) => c.name.toLowerCase() == q);
+                  if (q.length >= 2 &&
+                      !hasExact &&
+                      widget.onRegisterNewCustomer != null) {
+                    matches = [
+                      ...matches,
+                      Customer(
+                          id: _kNewCustId,
+                          name: val.text.trim(),
+                          phone: '',
+                          email: ''),
+                    ];
+                  }
+                  return matches;
                 },
-                displayStringForOption: (c) => c.name,
+                displayStringForOption: (c) =>
+                    c.id == _kNewCustId ? c.name : c.name,
                 onSelected: (c) {
+                  if (c.id == _kNewCustId) {
+                    setState(() {
+                      _registerMode = true;
+                      _customerId   = '';
+                      _linkedCustomer = null;
+                      _customerNameCtrl.text = c.name;
+                    });
+                    return;
+                  }
                   setState(() {
                     _linkedCustomer = c;
-                    _customerId = c.id;
+                    _customerId     = c.id;
+                    _registerMode   = false;
                     _customerNameCtrl.text = c.name;
                   });
                 },
@@ -396,8 +468,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     textCapitalization: TextCapitalization.words,
                     decoration: _deco(
                         widget.customers.isEmpty
-                            ? 'No customers — add customers first'
-                            : 'Search name or phone, then tap to select',
+                            ? 'Type name to register new customer'
+                            : 'Search name / phone, or type new name',
                         Icons.person_search_rounded),
                     onChanged: (v) {
                       _customerNameCtrl.text = v;
@@ -405,62 +477,143 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                           v.trim() != _linkedCustomer!.name) {
                         setState(() {
                           _linkedCustomer = null;
-                          _customerId = '';
+                          _customerId     = '';
+                          _registerMode   = false;
                         });
                       }
                     },
                   );
                 },
-                optionsViewBuilder: widget.customers.isEmpty
-                    ? null
-                    : (ctx, onSel, opts) => Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 8,
-                            borderRadius: BorderRadius.circular(14),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                  maxHeight: 220, maxWidth: 420),
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 6),
-                                itemCount: opts.length,
-                                itemBuilder: (_, i) {
-                                  final c = opts.elementAt(i);
-                                  final init = c.name.isNotEmpty
-                                      ? c.name[0].toUpperCase()
-                                      : '?';
-                                  return ListTile(
-                                    dense: true,
-                                    leading: CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: _pGreenL,
-                                      child: Text(init,
-                                          style: const TextStyle(
-                                              color: _pGreen,
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 13)),
-                                    ),
-                                    title: Text(c.name,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13)),
-                                    subtitle: Text(
-                                        c.phone.isNotEmpty
-                                            ? c.phone
-                                            : (c.email.isNotEmpty
-                                                ? c.email
-                                                : ''),
-                                        style: const TextStyle(fontSize: 11)),
-                                    onTap: () => onSel(c),
-                                  );
-                                },
+                optionsViewBuilder: (ctx, onSel, opts) => Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(14),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                          maxHeight: 240, maxWidth: 420),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        itemCount: opts.length,
+                        itemBuilder: (_, i) {
+                          final c = opts.elementAt(i);
+                          final isNew = c.id == _kNewCustId;
+                          if (isNew) {
+                            return ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: const Color(0xFFDCFCE7),
+                                child: const Icon(Icons.person_add_alt_1_rounded,
+                                    size: 16, color: Color(0xFF15803D)),
                               ),
+                              title: Text(
+                                'Register "${c.name}" as new customer',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: Color(0xFF15803D)),
+                              ),
+                              subtitle: const Text('Tap to add name + phone',
+                                  style: TextStyle(fontSize: 11)),
+                              tileColor: const Color(0xFFF0FDF4),
+                              onTap: () => onSel(c),
+                            );
+                          }
+                          final init = c.name.isNotEmpty
+                              ? c.name[0].toUpperCase()
+                              : '?';
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: _pGreenL,
+                              child: Text(init,
+                                  style: const TextStyle(
+                                      color: _pGreen,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13)),
                             ),
+                            title: Text(c.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13)),
+                            subtitle: Text(
+                                c.phone.isNotEmpty
+                                    ? c.phone
+                                    : (c.email.isNotEmpty ? c.email : ''),
+                                style: const TextStyle(fontSize: 11)),
+                            onTap: () => onSel(c),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Inline register form (shown when sentinel selected) ───
+              if (_registerMode) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF86EFAC)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Register "${_customerNameCtrl.text}" as new customer',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF065F46)),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _newPhoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            decoration: _deco(
+                                'Phone number (optional)',
+                                Icons.phone_outlined),
                           ),
                         ),
-              ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _registering ? null : _doRegister,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 13),
+                            decoration: BoxDecoration(
+                              color: _registering
+                                  ? const Color(0xFF9CA3AF)
+                                  : _pGreen,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _registering
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))
+                                : const Text('Add & Select',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 12),
 
@@ -679,7 +832,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
               const SizedBox(height: 10),
 
               // Discount
-              _label('LOYALTY DISCOUNT (LKR)'),
+              _label('DISCOUNT (LKR)'),
               TextFormField(
                 controller: _loyaltyDiscountCtrl,
                 keyboardType: TextInputType.number,

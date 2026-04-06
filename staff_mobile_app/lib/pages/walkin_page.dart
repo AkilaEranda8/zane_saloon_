@@ -192,6 +192,12 @@ class _WalkInPageState extends State<WalkInPage> {
       services: _services,
       customers: customers,
       initialBranchId: uid,
+      onRegisterNewCustomer: (name, phone, branchId) =>
+          AppStateScope.of(context).registerCustomer(
+            name: name,
+            phone: phone,
+            branchId: branchId,
+          ),
     );
     if (payload == null || !mounted) return;
 
@@ -375,7 +381,7 @@ class _WalkInPageState extends State<WalkInPage> {
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
       totalAmount:    payload.subtotal,
-      loyaltyDiscount: '0',
+      loyaltyDiscount: payload.loyaltyDiscount,
       method:         payload.method,
       paidAmount:     payload.amount,
       discountId:

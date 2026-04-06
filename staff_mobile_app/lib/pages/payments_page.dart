@@ -150,6 +150,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
       staff: staff, services: services,
       discounts: discounts,
       initialBranchId: uid,
+      onRegisterNewCustomer: (name, phone, branchId) =>
+          AppStateScope.of(context).registerCustomer(
+            name: name,
+            phone: phone,
+            branchId: branchId,
+          ),
     );
     if (payload == null || !mounted) return;
 
@@ -192,7 +198,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
   double get _totalRevenue =>
       _payments.fold(0, (s, p) => s + p.netAmount);
   double get _totalDiscount =>
-      _payments.fold(0, (s, p) => s + p.loyaltyDiscount);
+      _payments.fold(0, (s, p) => s + p.loyaltyDiscount + p.promoDiscount);
 
   @override
   Widget build(BuildContext context) {
@@ -605,8 +611,8 @@ class _PaymentCard extends StatelessWidget {
                 style: const TextStyle(
                   color: _forest, fontSize: 20,
                   fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-              if (p.loyaltyDiscount > 0)
-                Text('−${p.loyaltyDiscount.toStringAsFixed(0)} disc',
+              if (p.loyaltyDiscount + p.promoDiscount > 0)
+                Text('−${(p.loyaltyDiscount + p.promoDiscount).toStringAsFixed(0)} disc',
                   style: const TextStyle(
                     color: Color(0xFFD97706), fontSize: 10.5,
                     fontWeight: FontWeight.w600)),

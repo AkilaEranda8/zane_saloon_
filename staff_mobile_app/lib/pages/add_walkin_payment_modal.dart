@@ -21,16 +21,19 @@ class AddWalkInPaymentModalResult {
     required this.subtotal,
     required this.discountId,
     required this.serviceIds,
+    this.loyaltyDiscount = '0',
   });
 
   final String method;
-  /// Net paid (after promo).
+  /// Net paid (after promo + manual discount).
   final String amount;
-  /// Gross before promo (service sum).
+  /// Gross before discounts (service sum).
   final String subtotal;
   final String discountId;
   /// Ordered: primary first, then additional — sent to `/api/payments` as `service_ids`.
   final List<String> serviceIds;
+  /// Manual discount entered by staff (LKR).
+  final String loyaltyDiscount;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,6 +99,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amtCtrl;
+  late final TextEditingController _discountCtrl;
   String _method = 'Cash';
   String _discountId = '';
 
@@ -107,6 +111,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     super.initState();
     _hydrateSelection();
     _amtCtrl = TextEditingController(text: '0');
+    _discountCtrl = TextEditingController(text: '0');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncAmountFromServices();
     });
@@ -182,7 +187,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     }
     final gross = _totalSelectedAmount();
     final promo = _computedPromo();
-    final net = (gross - promo).clamp(0, double.infinity);
+    final manual = double.tryParse(_discountCtrl.text.trim()) ?? 0;
+    final net = (gross - promo - manual).clamp(0, double.infinity);
     _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
@@ -225,6 +231,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   @override
   void dispose() {
     _amtCtrl.dispose();
+    _discountCtrl.dispose();
     super.dispose();
   }
 
@@ -243,6 +250,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       subtotal: gross > 0 ? gross.toStringAsFixed(0) : '0',
       discountId: _discountId,
       serviceIds: List<String>.from(_orderedSelectedServiceIds()),
+      loyaltyDiscount: _discountCtrl.text.trim().isEmpty ? '0' : _discountCtrl.text.trim(),
     ));
   }
 
@@ -456,6 +464,35 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                   },
                 ),
               ],
+
+              const SizedBox(height: 18),
+
+              _label('DISCOUNT (LKR)'),
+              TextFormField(
+                controller: _discountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: '0',
+                  hintStyle: const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+                  prefixIcon: const Icon(Icons.discount_outlined, color: _pGreen, size: 19),
+                  filled: true,
+                  fillColor: _pBg,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pGreen, width: 1.8),
+                  ),
+                ),
+                onChanged: (_) => setState(_syncAmountFromServices),
+              ),
 
               const SizedBox(height: 18),
 
