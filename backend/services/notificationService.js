@@ -441,13 +441,20 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
   }
 
   if (phone && flags.payment_receipt_sms) {
+    const paid       = parseFloat(payment.total_amount || 0);
+    const grossBill  = paid + discount;
+    const totalPts   = customer?.loyalty_points || 0;
     let smsMsg =
-      `Zane Salon - Payment Receipt\n` +
-      `Hi ${customerName}! Payment confirmed.\n` +
-      `Service: ${svcName} | Branch: ${brName}\n` +
-      `Date: ${date} | Total: ${total}`;
-    if (discount > 0)     smsMsg += `\nDiscount: Rs. ${discount.toFixed(2)}`;
+      `Zane Salon - Receipt\n` +
+      `Hi ${customerName}!\n` +
+      `Paid: Rs. ${paid.toFixed(2)}\n` +
+      `Service: ${svcName} | ${date}`;
+    if (discount > 0) {
+      smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
+      smsMsg += `\nPromo -Rs.${discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2)}`;
+    }
     if (pointsEarned > 0) smsMsg += `\nEarned: +${pointsEarned} pts`;
+    if (totalPts > 0)     smsMsg += `\nTotal Points: ${totalPts} pts`;
     smsMsg += `\nThank you!`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
