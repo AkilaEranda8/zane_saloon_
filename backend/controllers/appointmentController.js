@@ -121,13 +121,20 @@ const create = async (req, res) => {
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
 
-    // Fire-and-forget notification (only if phone provided)
-    if (phone) {
+    // Fire-and-forget notification — use request phone or fall back to customer record
+    const notifyPhone = phone || (customer_id
+      ? await (async () => {
+          const { Customer: CustModel } = require('../models');
+          const c = await CustModel.findByPk(customer_id, { attributes: ['phone'] });
+          return c?.phone || null;
+        })()
+      : null);
+    if (notifyPhone) {
       const [branch, service] = await Promise.all([
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
         Service.findByPk(service_id, { attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentConfirmed(appt, branch, service);
+      notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
 
     return res.status(201).json(appt);
