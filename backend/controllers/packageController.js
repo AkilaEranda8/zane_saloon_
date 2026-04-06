@@ -201,9 +201,7 @@ const activePackages = async (req, res) => {
     const active = rows.filter((cp) =>
       cp.sessions_total === null || cp.sessions_total === 0 || cp.sessions_remaining > 0
     );
-    const json = active.map(r => r.toJSON());
-    console.log(`[activePackages] customerId=${req.params.customerId} returning ${json.length}`, JSON.stringify(json.map(r=>({id:r.id,pkg:r.package?.name,pkg_price:r.package?.package_price,sessions_total:r.sessions_total,sessions_remaining:r.sessions_remaining}))));
-    return res.json(json);
+    return res.json(active.map(r => r.toJSON()));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
