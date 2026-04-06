@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -7,15 +7,131 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
-  IconEye, IconEdit, IconPlus, IconDollar, IconReceipt, IconCalendar,
+  IconEye, IconPlus, IconDollar, IconReceipt, IconCalendar,
   ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
   DataTable,
 } from '../components/ui/PageKit';
-import { computePromoFromDiscount } from '../utils/promoDiscount';
+
+/*─── CustomerTypeahead ─────────────────────────────────────────────────────*/
+function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
+  const [query,  setQuery]  = useState('');
+  const [open,   setOpen]   = useState(false);
+  const [phone,  setPhone]  = useState('');
+  const [name,   setName]   = useState('');
+  const [adding, setAdding] = useState(false);
+  const ref = useRef(null);
+
+  const isPhone  = /^[\d+\-\s()]{3,}$/.test(query.trim());
+  const selected = customers.find(c => String(c.id) === String(value));
+  const filtered = query.length > 0
+    ? customers.filter(c =>
+        c.name?.toLowerCase().includes(query.toLowerCase()) ||
+        c.phone?.toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 8)
+    : [];
+  const hasExact = isPhone
+    ? customers.some(c => c.phone === query.trim())
+    : customers.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
+  const showNew  = query.trim().length >= 2 && !hasExact;
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, []);
+
+  const pick  = c  => { onSelect(c.id); setQuery(''); setPhone(''); setName(''); setOpen(false); };
+  const clear = e  => { e.stopPropagation(); onSelect(''); setQuery(''); setPhone(''); setName(''); setOpen(false); };
+
+  const addNew = async () => {
+    const custName  = isPhone ? name.trim()  : query.trim();
+    const custPhone = isPhone ? query.trim() : phone.trim() || null;
+    if (!custName) return;
+    setAdding(true);
+    try {
+      const res = await api.post('/customers', {
+        name: custName,
+        phone: custPhone,
+        ...(branchId ? { branch_id: branchId } : {}),
+      });
+      onNew(res.data);
+      onSelect(res.data.id);
+      setQuery(''); setPhone(''); setName(''); setOpen(false);
+    } catch { }
+    setAdding(false);
+  };
+
+  const INP = { width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff', boxSizing:'border-box' };
+
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      {selected && !query ? (
+        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', borderRadius:9, border:'1.5px solid #2563EB', background:'#EFF6FF', cursor:'pointer' }}
+          onClick={() => { setQuery(selected.name); setOpen(true); }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span style={{ flex:1, fontSize:13, fontWeight:600, color:'#1D4ED8' }}>{selected.name}</span>
+          <span style={{ fontSize:11, color:'#93C5FD' }}>{selected.phone}</span>
+          <button onClick={clear} style={{ background:'none', border:'none', cursor:'pointer', color:'#60A5FA', fontSize:18, lineHeight:1, padding:0 }}>×</button>
+        </div>
+      ) : (
+        <input value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)} placeholder="Type name or phone…" style={INP} />
+      )}
+
+      {open && (filtered.length > 0 || showNew) && (
+        <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:2000, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.14)', marginTop:4, maxHeight:280, overflowY:'auto' }}>
+          {filtered.map(c => (
+            <div key={c.id} onMouseDown={() => pick(c)}
+              style={{ padding:'9px 14px', cursor:'pointer', display:'flex', gap:10, alignItems:'center', borderBottom:'1px solid #F2F4F7' }}
+              onMouseEnter={e => e.currentTarget.style.background='#F9FAFB'}
+              onMouseLeave={e => e.currentTarget.style.background=''}>
+              <div style={{ width:28, height:28, borderRadius:'50%', background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#2563EB', flexShrink:0 }}>
+                {c.name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
+                <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone}</div>
+              </div>
+            </div>
+          ))}
+          {showNew && (
+            <div style={{ padding:'10px 14px', background:'#F0FDF4', borderTop: filtered.length ? '1px solid #E4E7EC' : 'none' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#065F46', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                {isPhone ? `Register new customer (📱 ${query.trim()})` : `Register "${query.trim()}" as new customer`}
+              </div>
+              {isPhone ? (
+                <div style={{ display:'flex', gap:8 }}>
+                  <input value={name} onChange={e => setName(e.target.value)}
+                    placeholder="Full name *" onMouseDown={e => e.stopPropagation()}
+                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
+                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding || !name.trim()}
+                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity:(adding || !name.trim()) ? 0.5 : 1 }}>
+                    {adding ? '…' : 'Add & Select'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:8 }}>
+                  <input value={phone} onChange={e => setPhone(e.target.value)}
+                    placeholder="Mobile number" onMouseDown={e => e.stopPropagation()}
+                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
+                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding}
+                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: adding ? 0.7 : 1 }}>
+                    {adding ? '…' : 'Add & Select'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
-const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
+const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, splits:[{ method:'Cash', amount:'' }] };
 
 function PrintIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
@@ -59,12 +175,11 @@ function printReceipt(payment) {
     ${dash()}
     ${line('Subtotal', 'Rs. ' + Number(payment.total_amount||0).toLocaleString())}
     ${Number(payment.loyalty_discount||0) > 0 ? line('Loyalty Disc.', '- Rs. ' + Number(payment.loyalty_discount).toLocaleString()) : ''}
-    ${Number(payment.promo_discount||0) > 0 ? line('Promo Disc.', '- Rs. ' + Number(payment.promo_discount).toLocaleString()) : ''}
     ${dash()}
     <tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:4px 0;"></div></td></tr>
     <tr class="total-row">
       <td>NET TOTAL</td>
-      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0)).toLocaleString()}</td>
+      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0)).toLocaleString()}</td>
     </tr>
     ${dash()}
     ${splits}
@@ -80,7 +195,7 @@ function printReceipt(payment) {
 
 function InvoiceModal({ open, onClose, payment }) {
   if (!open || !payment) return null;
-  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0);
+  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0);
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(16,24,40,0.55)', backdropFilter:'blur(2px)' }}>
       <div style={{ background:'#fff', borderRadius:20, width:340, maxWidth:'95vw', boxShadow:'0 24px 64px rgba(16,24,40,0.25)', fontFamily:"'Courier New',monospace", overflow:'hidden' }}>
@@ -126,12 +241,6 @@ function InvoiceModal({ open, onClose, payment }) {
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
               <span style={{ color:'#D97706' }}>Loyalty Disc.</span>
               <span style={{ fontWeight:600, color:'#D97706' }}>- Rs. {Number(payment.loyalty_discount).toLocaleString()}</span>
-            </div>
-          )}
-          {Number(payment.promo_discount||0) > 0 && (
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
-              <span style={{ color:'#7C3AED' }}>Promo {payment.discount?.name ? `(${payment.discount.name})` : ''}</span>
-              <span style={{ fontWeight:600, color:'#7C3AED' }}>- Rs. {Number(payment.promo_discount).toLocaleString()}</span>
             </div>
           )}
 
@@ -236,7 +345,6 @@ export default function PaymentsPage() {
   const [filterMonth, setFilterMonth]   = useState(curMonth);
   const [search, setSearch]       = useState('');
   const [showForm, setShowForm]   = useState(false);
-  const [editId, setEditId]       = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceItem, setInvoiceItem] = useState(null);
   const [form, setForm]           = useState(EMPTY_FORM);
@@ -244,9 +352,6 @@ export default function PaymentsPage() {
   const [formErr, setFormErr]     = useState('');
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
-  const [discounts, setDiscounts]       = useState([]);
-  const [discountsLoading, setDiscountsLoading] = useState(false);
-  const [discountsLoadError, setDiscountsLoadError] = useState(false);
 
   // Load reference data once on mount (independent of payment filters)
   useEffect(() => {
@@ -262,34 +367,6 @@ export default function PaymentsPage() {
       if (svR.status === 'fulfilled') setServices(Array.isArray(svR.value.data) ? svR.value.data : (svR.value.data?.data ?? []));
     });
   }, []);
-
-  // Branch for promo list: form row, logged-in user's branch, or Payments page filter
-  const effectiveBranchForDiscounts = useMemo(
-    () => String(form.branch_id || user?.branchId || filterBranch || '').trim(),
-    [form.branch_id, user?.branchId, filterBranch],
-  );
-  useEffect(() => {
-    if (!effectiveBranchForDiscounts || !showForm) return;
-    let cancelled = false;
-    setDiscountsLoading(true);
-    setDiscountsLoadError(false);
-    api.get('/discounts/payment', { params: { branchId: effectiveBranchForDiscounts } })
-      .then((r) => {
-        if (!cancelled) setDiscounts(Array.isArray(r.data?.data) ? r.data.data : []);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setDiscounts([]);
-          setDiscountsLoadError(true);
-          const msg = e.response?.data?.message || 'Could not load promos';
-          toast(msg, 'error');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDiscountsLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [effectiveBranchForDiscounts, showForm]);
 
   // Load payments + summary whenever filters change
   const load = useCallback(async () => {
@@ -320,48 +397,7 @@ export default function PaymentsPage() {
   }, [filterBranch, filterMonth]);
   useEffect(() => { load(); }, [load]);
 
-  const openAdd = () => {
-    setEditId(null);
-    setForm({ ...EMPTY_FORM, branch_id: user?.branchId || filterBranch || '' });
-    setFormErr('');
-    setCustPackages([]);
-    setShowForm(true);
-  };
-
-  const openEdit = async (row) => {
-    setFormErr('');
-    try {
-      const { data: p } = await api.get(`/payments/${row.id}`);
-      const sid = p.service_id ?? p.service?.id;
-      const serviceIds = sid ? [Number(sid)] : [];
-      setForm({
-        branch_id: String(p.branch_id || ''),
-        staff_id: String(p.staff_id || ''),
-        customer_id: String(p.customer_id || ''),
-        service_ids: serviceIds.filter((x) => Number.isFinite(x) && x > 0),
-        total_amount: p.total_amount != null ? String(p.total_amount) : '',
-        loyalty_discount: Number(p.loyalty_discount || 0),
-        discount_id: p.discount_id ? String(p.discount_id) : '',
-        splits: (p.splits || []).map((sp) => ({
-          method: sp.method,
-          amount: sp.amount != null ? String(Number(sp.amount)) : '',
-          customer_package_id: sp.customer_package_id,
-        })),
-      });
-      setCustPackages([]);
-      if (p.customer_id) {
-        setLoadingPkgs(true);
-        api.get(`/packages/customer/${p.customer_id}/active`)
-          .then((r) => { setCustPackages(Array.isArray(r.data) ? r.data : []); })
-          .catch(() => {})
-          .finally(() => setLoadingPkgs(false));
-      }
-      setEditId(row.id);
-      setShowForm(true);
-    } catch (e) {
-      toast(e.response?.data?.message || 'Could not load payment', 'error');
-    }
-  };
+  const openAdd = () => { setForm({ ...EMPTY_FORM, branch_id: user?.branchId||'' }); setFormErr(''); setCustPackages([]); setShowForm(true); };
   const setSplit = (idx, field, val) => {
     setForm(f => {
       const s = [...f.splits];
@@ -375,62 +411,20 @@ export default function PaymentsPage() {
   const removeSplit = idx => setForm(f => ({ ...f, splits: f.splits.filter((_,i) => i!==idx) }));
 
   const handleSave = async () => {
-    if (!String(form.customer_id || '').trim()) return setFormErr('Select a customer before recording payment.');
-    if (!String(form.staff_id || '').trim()) return setFormErr('Select staff before recording payment.');
     if (!form.total_amount || !form.service_ids.length) return setFormErr('Total amount and at least one service are required');
-    const subtotal = Number(form.total_amount);
-    const loyalty = Number(form.loyalty_discount || 0);
-    const selDisc = form.discount_id ? discounts.find(d => String(d.id) === String(form.discount_id)) : null;
-    const promo = selDisc ? computePromoFromDiscount(selDisc, subtotal) : 0;
-    const net = subtotal - loyalty - promo;
     const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount||0), 0);
-    if (Math.abs(splitTotal - net) > 0.02)
-      return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal net after discounts (Rs. ${net.toLocaleString()})`);
+    if (Math.abs(splitTotal - Number(form.total_amount)) > 0.01 && form.splits.length > 0)
+      return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal total (Rs. ${Number(form.total_amount).toLocaleString()})`);
     setSaving(true);
     try {
       const { service_ids, ...rest } = form;
-      const payload = {
-        ...rest,
-        service_id: service_ids[0] || null,
-        service_ids,
-        subtotal,
-        discount_id: form.discount_id || null,
-      };
-      if (editId) {
-        await api.put(`/payments/${editId}`, payload);
-        toast('Payment updated successfully!', 'success');
-      } else {
-        await api.post('/payments', payload);
-        toast('Payment recorded successfully!', 'success');
-      }
-      setShowForm(false);
-      setEditId(null);
-      load();
+      // Include customer_package_id in splits payload
+      const payload = { ...rest, service_id: service_ids[0] || null };
+      await api.post('/payments', payload); setShowForm(false); load();
+      toast('Payment recorded successfully!', 'success');
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
-
-  const promoPreview = useMemo(() => {
-    const sub = Number(form.total_amount || 0);
-    const d = form.discount_id ? discounts.find(x => String(x.id) === String(form.discount_id)) : null;
-    return d ? computePromoFromDiscount(d, sub) : 0;
-  }, [form.total_amount, form.discount_id, discounts]);
-
-  useEffect(() => {
-    if (!showForm || form.splits.length !== 1) return;
-    const sub = Number(form.total_amount || 0);
-    if (!sub) return;
-    const loyalty = Number(form.loyalty_discount || 0);
-    const d = form.discount_id ? discounts.find(x => String(x.id) === String(form.discount_id)) : null;
-    const promo = d ? computePromoFromDiscount(d, sub) : 0;
-    const net = Math.max(0, sub - loyalty - promo);
-    const cur = Number(form.splits[0].amount || 0);
-    if (Math.abs(cur - net) < 0.02) return;
-    setForm(f => {
-      if (f.splits.length !== 1) return f;
-      return { ...f, splits: [{ ...f.splits[0], amount: String(net) }] };
-    });
-  }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
 
   const displayed = payments.filter(p => {
     if (!search) return true;
@@ -510,12 +504,9 @@ export default function PaymentsPage() {
           { accessorKey:'commission_amount', header:'Commission', meta:{ width:'12%', align:'right' },
             cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
           },
-          { id:'invoice', header:'Actions', meta:{ width:'14%', align:'center' },
+          { id:'invoice', header:'Actions', meta:{ width:'12%', align:'center' },
             cell: ({ row }) => (
-              <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap' }}>
-                {canEdit && (
-                  <ActionBtn onClick={() => openEdit(row.original)} title="Edit payment" color="#D97706"><IconEdit /></ActionBtn>
-                )}
+              <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
                 <ActionBtn onClick={() => { setInvoiceItem(row.original); setShowInvoice(true); }} title="View Receipt" color="#2563EB"><IconEye /></ActionBtn>
                 <ActionBtn onClick={() => printReceipt(row.original)} title="Print Receipt" color="#059669"><PrintIcon /></ActionBtn>
               </div>
@@ -529,18 +520,13 @@ export default function PaymentsPage() {
       />
 
       {/* Record Payment Modal */}
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? 'Edit Payment' : 'Record Payment'} size="lg"
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment" size="lg"
         footer={
           <div style={{ display:'flex', gap:10, justifyContent:'flex-end', width:'100%' }}>
-            <Button variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
-            <Button
-              variant="primary"
-              loading={saving}
-              disabled={saving || !String(form.customer_id || '').trim() || !String(form.staff_id || '').trim()}
-              onClick={handleSave}
-            >
+            <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={handleSave}>
               <span style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <IconDollar />{editId ? 'Save changes' : 'Record Payment'}
+                <IconDollar />Record Payment
               </span>
             </Button>
           </div>
@@ -561,30 +547,32 @@ export default function PaymentsPage() {
             </div>
             {(isAdmin && !hasFixedBranch) && (
               <FormGroup label="Branch" style={{ marginBottom:10 }}>
-                <Select value={form.branch_id||''} disabled={!!editId} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
+                <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
                   <option value="">Select branch</option>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </FormGroup>
             )}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FormGroup label="Customer *">
-                <Select value={form.customer_id||''} onChange={e => {
-                  const cid = e.target.value;
-                  setForm(f=>({...f, customer_id:cid}));
-                  setCustPackages([]);
-                  if (cid) {
-                    setLoadingPkgs(true);
-                    api.get(`/packages/customer/${cid}/active`).then(r => {
-                      setCustPackages(Array.isArray(r.data) ? r.data : []);
-                    }).catch(() => {}).finally(() => setLoadingPkgs(false));
-                  }
-                }}>
-                  <option value="">Select customer</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
-                </Select>
+              <FormGroup label="Customer">
+                <CustomerTypeahead
+                  customers={customers}
+                  value={form.customer_id}
+                  branchId={form.branch_id || user?.branch_id}
+                  onSelect={cid => {
+                    setForm(f => ({ ...f, customer_id: cid }));
+                    setCustPackages([]);
+                    if (cid) {
+                      setLoadingPkgs(true);
+                      api.get(`/packages/customer/${cid}/active`).then(r => {
+                        setCustPackages(Array.isArray(r.data) ? r.data : []);
+                      }).catch(() => {}).finally(() => setLoadingPkgs(false));
+                    }
+                  }}
+                  onNew={newCust => setCustomers(prev => [newCust, ...prev])}
+                />
               </FormGroup>
-              <FormGroup label="Staff *">
+              <FormGroup label="Staff">
                 <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>
                   <option value="">Select staff</option>
                   {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -645,36 +633,14 @@ export default function PaymentsPage() {
                 <Input type="number" value={form.loyalty_discount||0} onChange={e => setForm(f=>({...f, loyalty_discount:Number(e.target.value)}))} />
               </FormGroup>
             </div>
-            <FormGroup label="Promo discount" style={{ marginTop:10 }}>
-              <Select value={form.discount_id||''} onChange={e => setForm(f=>({...f, discount_id:e.target.value}))}>
-                <option value="">None</option>
-                {discounts.map(d => (
-                  <option key={d.id} value={d.id}>{d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})</option>
-                ))}
-              </Select>
-              {discountsLoading && (
-                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>Loading promos…</div>
-              )}
-              {!discountsLoading && showForm && !effectiveBranchForDiscounts && (
-                <div style={{ fontSize:12, color:'#B45309', marginTop:6 }}>
-                  Select branch (above) or pick a branch in the Payments filter on this page, then reopen Record Payment — promos load per branch.
-                </div>
-              )}
-              {!discountsLoading && !discountsLoadError && effectiveBranchForDiscounts && discounts.length === 0 && (
-                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
-                  No active promos for this branch. Add them under <strong>Discounts</strong> (dates, active, min bill).
-                </div>
-              )}
-            </FormGroup>
             {form.total_amount && (
               <div style={{ marginTop:12, background: 'linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #BFDBFE' }}>
                 <div style={{ fontSize:12, color:'#3B82F6' }}>
                   Rs. {Number(form.total_amount||0).toLocaleString()}
                   {Number(form.loyalty_discount||0) > 0 && <span style={{ color:'#EF4444', marginLeft:6 }}>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>}
-                  {promoPreview > 0 && <span style={{ color:'#7C3AED', marginLeft:6 }}>− Rs. {promoPreview.toLocaleString()} promo</span>}
                 </div>
                 <div style={{ fontSize:14, fontWeight:800, color:'#1D4ED8', fontFamily:"'Outfit',sans-serif" }}>
-                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview).toLocaleString()}
+                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0)).toLocaleString()}
                 </div>
               </div>
             )}
@@ -731,7 +697,7 @@ export default function PaymentsPage() {
             </div>
             {form.splits.length > 0 && form.total_amount && (() => {
               const splitTotal = form.splits.reduce((s,sp)=>s+Number(sp.amount||0),0);
-              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview;
+              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0);
               const diff = net - splitTotal;
               const ok = Math.abs(diff) < 0.01;
               return (
