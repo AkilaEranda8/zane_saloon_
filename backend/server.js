@@ -99,6 +99,7 @@ app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
+app.use('/api/discounts',    require('./routes/discounts'));
 app.use('/api/fcm-token',    require('./routes/fcmToken'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
