@@ -91,6 +91,29 @@ async function getChannelFlags() {
   }
 }
 
+// ── SMS credentials loader ──────────────────────────────────────────────────
+async function getSMSCreds() {
+  try {
+    const { NotificationSettings } = getModels();
+    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    if (row && row.sms_user_id && row.sms_api_key) {
+      return {
+        userId:   row.sms_user_id.trim(),
+        apiKey:   row.sms_api_key.trim(),
+        senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
+      };
+    }
+  } catch { /* fall through */ }
+  if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
+    return {
+      userId:   process.env.SMS_USER_ID,
+      apiKey:   process.env.SMS_API_KEY,
+      senderId: process.env.SMS_SENDER_ID || null,
+    };
+  }
+  return null;
+}
+
 // ── Core senders ──────────────────────────────────────────────────────────────
 
 /**
@@ -127,6 +150,69 @@ async function sendEmail({ to, subject, html, meta = {} }) {
     status,
     error_message:   errorMsg,
   });
+}
+
+/**
+ * Send an SMS via Notify.lk. Logs result. Never throws.
+ * @param {{ to, message, meta? }} opts
+ */
+async function sendSMS({ to, message, meta = {} }) {
+  if (!to) return null;
+  const creds = await getSMSCreds();
+  if (!creds) {
+    console.warn('[Notifications] SMS skipped — SMS credentials not configured.');
+    return null;
+  }
+  if (!creds.senderId) {
+    console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
+    return null;
+  }
+  const digits      = to.replace(/\D/g, '');
+  const toFormatted = digits.startsWith('94') ? digits
+                    : digits.startsWith('0')  ? '94' + digits.slice(1)
+                    : '94' + digits;
+  let status = 'sent', errorMsg = null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let res;
+    try {
+      res = await fetch('https://app.notify.lk/api/v1/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  controller.signal,
+        body:    JSON.stringify({
+          user_id:    creds.userId,
+          api_key:    creds.apiKey,
+          service_id: creds.senderId,
+          to:         toFormatted,
+          message,
+        }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
+    if (!res.ok || data.status === 'error') {
+      const errMsg = (Array.isArray(data.errors) && data.errors[0]) || data.message || `HTTP ${res.status}`;
+      throw new Error(errMsg);
+    }
+    console.log(`[Notifications] SMS sent → ${toFormatted}`);
+  } catch (err) {
+    status   = 'failed';
+    errorMsg = err.name === 'AbortError' ? 'SMS gateway timeout (15s)' : err.message;
+    console.error(`[Notifications] SMS failed → ${toFormatted}:`, errorMsg);
+  }
+  await writeLog({
+    ...meta,
+    channel:         'sms',
+    phone:           to,
+    message_preview: message.slice(0, 255),
+    status,
+    error_message:   errorMsg,
+  });
+  return { status, error: errorMsg };
 }
 
 /**
@@ -428,6 +514,7 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
 module.exports = {
   sendEmail,
   sendWhatsApp,
+  sendSMS,
   notifyAppointmentConfirmed,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
