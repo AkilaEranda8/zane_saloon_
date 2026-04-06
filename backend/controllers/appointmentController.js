@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Appointment, Branch, Customer, Staff, Service } = require('../models');
-const { notifyAppointmentConfirmed } = require('../services/notificationService');
+const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 
 const getBranchWhere = (req) => {
@@ -190,6 +190,15 @@ const changeStatus = async (req, res) => {
         Service.findByPk(appt.service_id, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed(appt, branch, service);
+    }
+
+    // Send SMS when appointment is completed
+    if (status === 'completed' && appt.phone) {
+      const [branch, service] = await Promise.all([
+        Branch.findByPk(appt.branch_id,   { attributes: ['id', 'name', 'phone'] }),
+        Service.findByPk(appt.service_id, { attributes: ['id', 'name'] }),
+      ]);
+      notifyAppointmentCompleted(appt, branch, service);
     }
 
     // Auto-create next recurring appointment when completed

@@ -81,6 +81,7 @@ const DEFAULT_FLAGS = {
   loyalty_points_sms:        false,
   customer_registered_sms:   false,
   customer_registered_email: false,
+  appt_completed_sms:        true,
 };
 
 async function getChannelFlags() {
@@ -372,7 +373,31 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
   }
 }
 
-// ── 2. Payment Receipt ────────────────────────────────────────────────────────
+// ── 2. Appointment Completed ────────────────────────────────────────────────
+async function notifyAppointmentCompleted(appointment, branch, service) {
+  const flags = await getChannelFlags();
+  const phone = appointment.phone || null;
+  if (!phone || !flags.appt_completed_sms) return;
+
+  const date    = appointment.date || '—';
+  const time    = appointment.time ? appointment.time.slice(0, 5) : '—';
+  const svcName = service?.name   || '—';
+  const brName  = branch?.name    || '—';
+  const meta    = {
+    customer_name: appointment.customer_name,
+    event_type:    'appointment_completed',
+    branch_id:     branch?.id || appointment.branch_id,
+  };
+
+  const smsMsg =
+    `Zane Salon\n` +
+    `Hi ${appointment.customer_name}! Your ${svcName} is done.\n` +
+    `${date} ${time} | ${brName}\n` +
+    `Thank you for visiting!`;
+  await sendSMS({ to: phone, message: smsMsg, meta });
+}
+
+// ── 3. Payment Receipt ────────────────────────────────────────────────────────
 async function notifyPaymentReceipt(payment, branch, service, customer) {
   const flags = await getChannelFlags();
   const phone = customer?.phone || null;
@@ -555,6 +580,7 @@ module.exports = {
   sendWhatsApp,
   sendSMS,
   notifyAppointmentConfirmed,
+  notifyAppointmentCompleted,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
   notifyReviewRequest,
