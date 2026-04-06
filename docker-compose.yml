@@ -69,6 +69,12 @@ services:
     expose:
       - "80"
 
+  website:
+    build: ./website
+    restart: unless-stopped
+    expose:
+      - "80"
+
   phpmyadmin:
     image: phpmyadmin:5
     restart: unless-stopped
