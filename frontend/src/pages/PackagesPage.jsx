@@ -294,8 +294,32 @@ export default function PackagesPage() {
       is_active:     pkg.is_active !== false,
       branch_id:     pkg.branch_id ? String(pkg.branch_id) : '',
     });
+    setCreateActivate(EMPTY_CREATE_ACTIVATE);
     setPkgFormError('');
     setShowPkgModal(true);
+  };
+
+  const handleActivateAllExisting = async () => {
+    if (!editPkg) return;
+    const branchId = pkgForm.branch_id || user.branchId || null;
+    const label    = branchId ? 'customers in the selected branch' : 'ALL customers across all branches';
+    if (!window.confirm(`Activate "${editPkg.name}" for ${label}?`)) return;
+    setPkgSaving(true); setPkgFormError('');
+    try {
+      const res = await api.post('/packages/purchase-all', {
+        packageId:     editPkg.id,
+        branchId:      branchId ? Number(branchId) : undefined,
+        paymentMethod: createActivate.payment_method || 'Cash',
+        notes:         createActivate.notes || undefined,
+      });
+      setShowPkgModal(false);
+      loadPackages();
+      alert(res.data?.message || 'Activation complete.');
+    } catch (err) {
+      setPkgFormError(err.response?.data?.message || 'Activation failed.');
+    } finally {
+      setPkgSaving(false);
+    }
   };
   const toggleService = (sid) => {
     const s = String(sid);
@@ -632,6 +656,12 @@ export default function PackagesPage() {
       <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={920}
         footer={<>
           <button onClick={() => setShowPkgModal(false)} style={{ padding:'8px 20px', borderRadius:10, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Cancel</button>
+          {editPkg && (
+            <button onClick={handleActivateAllExisting} disabled={pkgSaving}
+              style={{ padding:'8px 22px', borderRadius:10, border:'1.5px solid #86EFAC', background:pkgSaving?'#E5E7EB':'#F0FDF4', color:pkgSaving?'#64748B':'#166534', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
+              {pkgSaving ? 'Activating...' : '\u2713 Activate All Customers'}
+            </button>
+          )}
           {!editPkg && (
             <button onClick={() => handleSavePkg(createActivate.activate_all ? 'all' : 'single')} disabled={pkgSaving}
               style={{ padding:'8px 22px', borderRadius:10, border:'1.5px solid #BFDBFE', background:pkgSaving?'#E5E7EB':'#EFF6FF', color:pkgSaving?'#64748B':'#1D4ED8', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
@@ -752,6 +782,26 @@ export default function PackagesPage() {
                 <input type="checkbox" checked={createActivate.activate_all} onChange={e=>setCreateActivate(f=>({...f,activate_all:e.target.checked}))} style={{ width:14, height:14, accentColor:'#059669' }} />
                 Activate for all customers in selected branch
               </label>
+            </div>
+          )}
+          {editPkg && (
+            <div>
+              <div style={head}>5. Activate for All Customers</div>
+              <div style={{ padding:'12px 14px', background:'#F0FDF4', border:'1px solid #86EFAC', borderRadius:10, fontSize:13, color:'#166534', marginBottom:12, fontFamily:"'Inter',sans-serif" }}>
+                Activate <strong>"{editPkg.name}"</strong> for {pkgForm.branch_id ? 'all customers in the selected branch' : 'ALL customers across all branches'}.
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <Lbl>Payment Method</Lbl>
+                  <select value={createActivate.payment_method} onChange={e=>setCreateActivate(f=>({...f,payment_method:e.target.value}))} style={inp}>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Lbl>Notes (optional)</Lbl>
+                  <input value={createActivate.notes} onChange={e=>setCreateActivate(f=>({...f,notes:e.target.value}))} placeholder="Activation notes" style={inp} />
+                </div>
+              </div>
             </div>
           )}
           {/* Active toggle */}
