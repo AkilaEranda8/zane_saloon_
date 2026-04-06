@@ -394,7 +394,9 @@ class MobileApi {
     String? customerId,
     String subtotal = '',
     String loyaltyDiscount = '0',
+    String promoDiscount = '0',
     String? discountId,
+    String? phone,
   }) async {
     final parsedAmount = double.tryParse(amount.trim()) ?? 0;
     final sub = double.tryParse(subtotal.trim()) ?? 0;
@@ -407,6 +409,8 @@ class MobileApi {
         'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
       if (sub > 0) 'subtotal': sub,
       'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
+      'promo_discount': double.tryParse(promoDiscount.trim()) ?? 0,
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       if (discountId != null && discountId.trim().isNotEmpty)
         'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
       'splits': [

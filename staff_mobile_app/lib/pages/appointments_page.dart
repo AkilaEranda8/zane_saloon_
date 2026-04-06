@@ -418,8 +418,9 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       method: result.method,
       paymentServiceIds: result.serviceIds,
       subtotal: result.subtotal,
-      discountId:
-          result.discountId.isNotEmpty ? result.discountId : null,
+      discountId: result.discountId.isNotEmpty ? result.discountId : null,
+      promoDiscount: result.promoDiscount,
+      phone: a.phone.trim().isEmpty ? null : a.phone.trim(),
     );
     if (!mounted) return;
     if (!success) { _toast(app.lastError ?? 'Payment failed'); return; }
@@ -1611,6 +1612,7 @@ class _PayResult {
     required this.serviceIds,
     required this.subtotal,
     this.discountId = '',
+    this.promoDiscount = '0',
   });
   /// Net collected (after promo).
   final String amount;
@@ -1619,6 +1621,7 @@ class _PayResult {
   /// Gross before promo.
   final String subtotal;
   final String discountId;
+  final String promoDiscount;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -1759,12 +1762,14 @@ class _PaySheetState extends State<_PaySheet> {
       return;
     }
     final gross = _grossFromSelection();
+    final promo = _computedPromo();
     Navigator.of(context).pop(_PayResult(
       amount: _amtCtrl.text.trim(),
       method: _method,
       serviceIds: ids,
       subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
       discountId: _discountId,
+      promoDiscount: promo.toStringAsFixed(2),
     ));
   }
 

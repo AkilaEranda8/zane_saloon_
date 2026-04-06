@@ -921,7 +921,9 @@ class AppState extends ChangeNotifier {
     required List<String> paymentServiceIds,
     String subtotal = '',
     String loyaltyDiscount = '0',
+    String promoDiscount = '0',
     String? discountId,
+    String? phone,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -957,6 +959,8 @@ class AppState extends ChangeNotifier {
         method: method,
         subtotal: subtotal,
         loyaltyDiscount: loyaltyDiscount,
+        promoDiscount: promoDiscount,
+        phone: phone ?? (appointment.phone.trim().isEmpty ? null : appointment.phone.trim()),
         discountId: discountId,
       );
       await _api.updateAppointmentStatus(
