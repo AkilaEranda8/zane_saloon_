@@ -280,7 +280,7 @@ export default function StaffPage() {
       />
 
       {/* Add / Edit Modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Staff' : 'Add Staff Member'} size="md"
+      <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Staff' : 'Add Staff Member'} size="lg"
         footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Staff'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
