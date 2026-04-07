@@ -15,6 +15,7 @@ import { Select }        from '../components/ui/FormElements';
 const fmt   = n => `Rs. ${Number(n || 0).toLocaleString()}`;
 const fmtN  = n => Number(n || 0).toLocaleString();
 const today = () => new Date().toISOString().slice(0, 10);
+const thisMonth = () => new Date().toISOString().slice(0, 7);
 
 /* design tokens */
 const G900 = '#1B3A2D';   /* dark forest green – primary */
@@ -137,6 +138,7 @@ export default function DashboardPage() {
   const [services,    setServices]    = useState([]);
   const [branches,    setBranches]    = useState([]);
   const [branchId,    setBranchId]    = useState('');
+  const [month,       setMonth]       = useState(thisMonth());
   const [revenueData, setRevenueData] = useState([]);
   const [apptStatus,  setApptStatus]  = useState([]);
   const [staffData,   setStaffData]   = useState([]);
@@ -145,17 +147,24 @@ export default function DashboardPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const bq    = branchId ? `?branchId=${branchId}` : '';
-      const bqAmp = branchId ? `&branchId=${branchId}` : '';
+      const reportParams = new URLSearchParams();
+      if (branchId) reportParams.set('branchId', branchId);
+      if (month) reportParams.set('month', month);
+      const reportQ = reportParams.toString() ? `?${reportParams.toString()}` : '';
+
+      const extraParams = new URLSearchParams();
+      if (branchId) extraParams.set('branchId', branchId);
+      const extraQ = extraParams.toString();
+      const extraQPrefix = extraQ ? `&${extraQ}` : '';
 
       const [dashRes, apptRes, remRes, svcRes, revRes, statusRes, staffRes] = await Promise.all([
-        api.get(`/reports/dashboard${bq}`),
-        api.get(`/appointments?limit=8&date=${today()}${bqAmp}&sort=time&order=asc`),
-        api.get(`/reminders?done=false&limit=6${bqAmp}`),
-        api.get(`/reports/services${bq}`),
-        api.get(`/reports/revenue${bq}`),
-        api.get(`/reports/appointments${bq}`),
-        api.get(`/reports/staff${bq}`),
+        api.get(`/reports/dashboard${reportQ}`),
+        api.get(`/appointments?limit=8&date=${today()}${extraQPrefix}&sort=time&order=asc`),
+        api.get(`/reminders?done=false&limit=6${extraQPrefix}`),
+        api.get(`/reports/services${reportQ}`),
+        api.get(`/reports/revenue${reportQ}`),
+        api.get(`/reports/appointments${reportQ}`),
+        api.get(`/reports/staff${reportQ}`),
       ]);
 
       setStats(dashRes.data);
@@ -200,7 +209,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, month]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -245,6 +254,20 @@ export default function DashboardPage() {
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           )}
+          <input
+            type="month"
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+            style={{
+              width: 145,
+              borderRadius: 10,
+              border: '1.5px solid #E5E7EB',
+              padding: '9px 10px',
+              fontSize: 13,
+              color: '#374151',
+              background: '#fff',
+            }}
+          />
           <button
             onClick={() => navigate('/appointments')}
             style={{ display:'flex', alignItems:'center', gap:7, padding:'10px 18px', borderRadius:12, background:G900, color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}

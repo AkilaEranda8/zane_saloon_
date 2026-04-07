@@ -10,11 +10,25 @@ const getBranchWhere = (req) => {
   return where;
 };
 
+const getMonthRange = (monthValue) => {
+  if (!monthValue || !/^\d{4}-\d{2}$/.test(monthValue)) return null;
+  const [yearStr, monthStr] = monthValue.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  if (!year || !month || month < 1 || month > 12) return null;
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    start: `${yearStr}-${monthStr}-01`,
+    end: `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`,
+  };
+};
+
 // GET /api/reports/revenue  — last 12 months grouped by month
 const revenue = async (req, res) => {
   try {
     const where = getBranchWhere(req);
-    const d = new Date();
+    const monthRange = getMonthRange(req.query.month);
+    const d = monthRange ? new Date(`${monthRange.end}T00:00:00`) : new Date();
     const start = new Date(d.getFullYear(), d.getMonth() - 11, 1).toISOString().slice(0, 10);
     where.date = { [Op.gte]: start };
 
@@ -160,10 +174,13 @@ const dashboard = async (req, res) => {
   try {
     const branchWhere = getBranchWhere(req);
     const today = new Date().toISOString().slice(0, 10);
+    const selectedMonthRange = getMonthRange(req.query.month);
     const [yrStr, moStr] = today.split('-');
-    const monthStart = `${yrStr}-${moStr}-01`;
-    const lastDay    = new Date(parseInt(yrStr), parseInt(moStr), 0).getDate();
-    const monthEnd   = `${yrStr}-${moStr}-${lastDay}`;
+    const currentMonthStart = `${yrStr}-${moStr}-01`;
+    const currentLastDay = new Date(parseInt(yrStr, 10), parseInt(moStr, 10), 0).getDate();
+    const currentMonthEnd = `${yrStr}-${moStr}-${String(currentLastDay).padStart(2, '0')}`;
+    const monthStart = selectedMonthRange?.start || currentMonthStart;
+    const monthEnd = selectedMonthRange?.end || currentMonthEnd;
 
     const [
       todayAppts,
