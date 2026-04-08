@@ -17,6 +17,22 @@ const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
 const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
 
+const parseAdditionalServiceNames = (notes = '') => {
+  const line = String(notes).split('\n').find((l) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(l));
+  if (!line) return [];
+  return line
+    .replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+};
+
+const getPaymentServiceNames = (payment) => {
+  const primary = payment?.service?.name ? [payment.service.name] : [];
+  const extras = parseAdditionalServiceNames(payment?.appointment?.notes || '');
+  return Array.from(new Set([...primary, ...extras]));
+};
+
 function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
   const [query,  setQuery]  = useState('');
   const [open,   setOpen]   = useState(false);
@@ -431,8 +447,13 @@ export default function PaymentsPage() {
     setFormErr('');
     try {
       const { data: p } = await api.get(`/payments/${row.id}`);
-      const sid = p.service_id ?? p.service?.id;
-      const serviceIds = sid ? [Number(sid)] : [];
+      const sid = Number(p.service_id ?? p.service?.id ?? 0);
+      const extraNames = parseAdditionalServiceNames(p.appointment?.notes || '');
+      const extraIds = extraNames
+        .map((name) => services.find((s) => String(s.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase())?.id)
+        .filter(Boolean)
+        .map(Number);
+      const serviceIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
       setForm({
         branch_id: String(p.branch_id || ''),
         staff_id: String(p.staff_id || ''),
@@ -532,10 +553,11 @@ export default function PaymentsPage() {
     });
   }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
 
-  const displayed = payments.filter(p => {
+  const displayed = payments.filter((p) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return p.customer_name?.toLowerCase().includes(q) || p.service?.name?.toLowerCase().includes(q) || p.staff?.name?.toLowerCase().includes(q);
+    const serviceText = getPaymentServiceNames(p).join(' ').toLowerCase();
+    return p.customer_name?.toLowerCase().includes(q) || serviceText.includes(q) || p.staff?.name?.toLowerCase().includes(q);
   });
 
   return (
@@ -590,8 +612,12 @@ export default function PaymentsPage() {
             )
           },
           { id:'service', header:'Service', meta:{ width:'16%' },
-            accessorFn: r => r.service?.name || '',
-            cell: ({ getValue }) => <span style={{ fontSize:13, color:'#475467' }}>{getValue()}</span>
+            accessorFn: r => getPaymentServiceNames(r).join(', '),
+            cell: ({ row }) => (
+              <span style={{ fontSize:13, color:'#475467' }}>
+                {getPaymentServiceNames(row.original).join(', ') || '—'}
+              </span>
+            )
           },
           { id:'payment', header:'Payment', meta:{ width:'20%' },
             cell: ({ row }) => (
