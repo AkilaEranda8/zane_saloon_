@@ -1674,8 +1674,12 @@ class _PaySheetState extends State<_PaySheet> {
     final preStrs = widget.preSelected.map((e) => e.toString()).toList();
     _primaryServiceId = preStrs.isNotEmpty ? preStrs.first : null;
     if (preStrs.length > 1) _extraServiceIds.addAll(preStrs.sublist(1));
-    _calcTotal = widget.initialAmount;
-    _amtCtrl = TextEditingController(text: widget.initialAmount);
+    final gross = _grossFromSelection();
+    final initialGross = gross > 0
+        ? gross.toStringAsFixed(0)
+        : widget.initialAmount;
+    _calcTotal = initialGross;
+    _amtCtrl = TextEditingController(text: initialGross);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _recalc();
     });
