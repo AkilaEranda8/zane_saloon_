@@ -1,3 +1,4 @@
+const { sequelize }      = require('../config/database');
 const Branch             = require('./Branch');
 const User               = require('./User');
 const Service            = require('./Service');
