@@ -10,6 +10,7 @@ const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
+const { runAppointmentServicesMigration } = require('./services/appointmentServicesMigration');
 
 // Validate required env vars on startup
 validateEnv();
@@ -160,6 +161,12 @@ connectWithRetry().then(async () => {
     }
   } catch (err) {
     console.warn('⚠  Migration staff.user_id:', err.message);
+  }
+
+  try {
+    await runAppointmentServicesMigration();
+  } catch (err) {
+    console.warn('⚠  Migration appointment_services:', err.message);
   }
 
   startAppointmentReminderCron();

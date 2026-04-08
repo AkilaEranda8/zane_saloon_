@@ -27,15 +27,19 @@ const normalizeServiceIds = (rawIds, fallbackServiceId) => {
 
 const syncAppointmentServices = async (appointmentId, serviceIds) => {
   if (!appointmentId || !Array.isArray(serviceIds) || serviceIds.length === 0) return;
-  await AppointmentService.destroy({ where: { appointment_id: appointmentId } });
-  await AppointmentService.bulkCreate(
-    serviceIds.map((serviceId, index) => ({
-      appointment_id: appointmentId,
-      service_id: serviceId,
-      sort_order: index,
-    })),
-    { ignoreDuplicates: true },
-  );
+  try {
+    await AppointmentService.destroy({ where: { appointment_id: appointmentId } });
+    await AppointmentService.bulkCreate(
+      serviceIds.map((serviceId, index) => ({
+        appointment_id: appointmentId,
+        service_id: serviceId,
+        sort_order: index,
+      })),
+      { ignoreDuplicates: true },
+    );
+  } catch (err) {
+    console.warn('appointment_services sync skipped:', err.message);
+  }
 };
 
 const attachServiceIds = async (appointments) => {
@@ -45,12 +49,17 @@ const attachServiceIds = async (appointments) => {
     .filter((id) => id > 0);
   if (!appointmentIds.length) return;
 
-  const mappings = await AppointmentService.findAll({
-    where: { appointment_id: appointmentIds },
-    attributes: ['appointment_id', 'service_id', 'sort_order'],
-    order: [['appointment_id', 'ASC'], ['sort_order', 'ASC'], ['id', 'ASC']],
-    raw: true,
-  });
+  let mappings = [];
+  try {
+    mappings = await AppointmentService.findAll({
+      where: { appointment_id: appointmentIds },
+      attributes: ['appointment_id', 'service_id', 'sort_order'],
+      order: [['appointment_id', 'ASC'], ['sort_order', 'ASC'], ['id', 'ASC']],
+      raw: true,
+    });
+  } catch (err) {
+    console.warn('appointment_services load skipped:', err.message);
+  }
 
   const byAppointment = new Map();
   for (const row of mappings) {
