@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service, Payment } = require('../models');
+const { Appointment, Branch, Customer, Staff, Service, Payment, AppointmentService } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
@@ -12,6 +12,60 @@ const getBranchWhere = (req) => {
     where.branch_id = req.query.branchId;
   }
   return where;
+};
+
+const normalizeServiceIds = (rawIds, fallbackServiceId) => {
+  const ids = Array.isArray(rawIds)
+    ? rawIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    : [];
+  if (ids.length > 0) return ids;
+  const fallback = Number(fallbackServiceId || 0);
+  return fallback > 0 ? [fallback] : [];
+};
+
+const syncAppointmentServices = async (appointmentId, serviceIds) => {
+  if (!appointmentId || !Array.isArray(serviceIds) || serviceIds.length === 0) return;
+  await AppointmentService.destroy({ where: { appointment_id: appointmentId } });
+  await AppointmentService.bulkCreate(
+    serviceIds.map((serviceId, index) => ({
+      appointment_id: appointmentId,
+      service_id: serviceId,
+      sort_order: index,
+    })),
+    { ignoreDuplicates: true },
+  );
+};
+
+const attachServiceIds = async (appointments) => {
+  if (!appointments || appointments.length === 0) return;
+  const appointmentIds = appointments
+    .map((row) => Number(row?.id || 0))
+    .filter((id) => id > 0);
+  if (!appointmentIds.length) return;
+
+  const mappings = await AppointmentService.findAll({
+    where: { appointment_id: appointmentIds },
+    attributes: ['appointment_id', 'service_id', 'sort_order'],
+    order: [['appointment_id', 'ASC'], ['sort_order', 'ASC'], ['id', 'ASC']],
+    raw: true,
+  });
+
+  const byAppointment = new Map();
+  for (const row of mappings) {
+    const key = Number(row.appointment_id);
+    const next = byAppointment.get(key) || [];
+    next.push(Number(row.service_id));
+    byAppointment.set(key, next);
+  }
+
+  for (const appt of appointments) {
+    const key = Number(appt.id || 0);
+    const fallback = Number(appt.service_id || 0);
+    const ids = (byAppointment.get(key) || (fallback > 0 ? [fallback] : [])).map((id) => Number(id));
+    appt.setDataValue('service_ids', ids);
+  }
 };
 
 const list = async (req, res) => {
@@ -38,6 +92,8 @@ const list = async (req, res) => {
         { model: require('../models').Discount, as: 'discount', attributes: ['id', 'name'] },
       ],
     });
+
+    await attachServiceIds(rows);
 
     return res.json({ total: count, page, limit, data: rows });
   } catch (err) {
@@ -73,6 +129,8 @@ const calendar = async (req, res) => {
       ],
     });
 
+    await attachServiceIds(appts);
+
     // Group by date
     const grouped = {};
     for (const a of appts) {
@@ -98,6 +156,7 @@ const getOne = async (req, res) => {
       ],
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+    await attachServiceIds([appt]);
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -106,25 +165,34 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, service_ids, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
+    const selectedServiceIds = normalizeServiceIds(service_ids, service_id);
+    const primaryServiceId = selectedServiceIds[0] || Number(service_id || 0);
 
-    if (!branch_id || !service_id || !customer_name || !date || !time) {
+    if (!branch_id || !primaryServiceId || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
     // Auto-fetch service price if amount not provided
     let finalAmount = amount;
-    if (!finalAmount && service_id) {
-      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
-      if (svc) finalAmount = svc.price;
+    if (!finalAmount) {
+      const rows = await Service.findAll({
+        where: { id: selectedServiceIds },
+        attributes: ['price'],
+      });
+      if (rows.length) {
+        finalAmount = rows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+      }
     }
 
     const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
+      branch_id, customer_id, staff_id, service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       discount_id: discount_id || null,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
+
+    await syncAppointmentServices(appt.id, selectedServiceIds);
 
     // Fire-and-forget notification — use request phone or fall back to customer record
     const notifyPhone = phone || (customer_id
@@ -137,7 +205,7 @@ const create = async (req, res) => {
     if (notifyPhone) {
       const [branch, service] = await Promise.all([
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+        Service.findByPk(primaryServiceId, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
@@ -181,11 +249,7 @@ const update = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    const incomingServiceIds = Array.isArray(req.body.service_ids)
-      ? req.body.service_ids
-          .map((id) => Number(id))
-          .filter((id) => Number.isInteger(id) && id > 0)
-      : [];
+    const incomingServiceIds = normalizeServiceIds(req.body.service_ids, req.body.service_id);
     if (incomingServiceIds.length > 0 && req.body.service_id === undefined) {
       updates.service_id = incomingServiceIds[0];
     }
@@ -213,6 +277,10 @@ const update = async (req, res) => {
     const prevStaffId = appt.staff_id;
     const primaryServiceId = updates.service_id || appt.service_id;
     await appt.update(updates);
+
+    if (incomingServiceIds.length > 0) {
+      await syncAppointmentServices(appt.id, incomingServiceIds);
+    }
 
     // Keep linked payment records in sync with appointment edits.
     const paymentUpdates = {};

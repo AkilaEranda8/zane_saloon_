@@ -19,6 +19,8 @@ class Appointment {
     this.staffId = '',
     this.customerId = '',
     this.branchName = '',
+    this.discountId = '',
+    this.discountName = '',
   });
 
   final String id;
@@ -38,6 +40,8 @@ class Appointment {
   final String staffId;
   final String customerId;
   final String branchName;
+  final String discountId;
+  final String discountName;
 
   /// Primary + additional service names (from notes), de-duplicated, order preserved.
   String get servicesDisplay {
@@ -78,6 +82,7 @@ class Appointment {
     final staff = json['staff'];
     final customer = json['customer'];
     final branch = json['branch'];
+    final discount = json['discount'];
     final rawAmount = json['amount'];
     final amt = rawAmount is num
         ? rawAmount.toDouble()
@@ -107,6 +112,8 @@ class Appointment {
       staffId: '${json['staff_id'] ?? staff?['id'] ?? ''}',
       customerId: '${json['customer_id'] ?? customer?['id'] ?? ''}',
       branchName: '${branch is Map ? branch['name'] ?? '' : ''}',
+      discountId: '${json['discount_id'] ?? (discount is Map ? discount['id'] ?? '' : '')}',
+      discountName: '${discount is Map ? discount['name'] ?? '' : ''}',
     );
   }
 }

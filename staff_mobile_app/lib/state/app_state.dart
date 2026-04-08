@@ -808,6 +808,7 @@ class AppState extends ChangeNotifier {
     required String baseNotes,
     required String status,
     String? amountOverride,
+    String? discountId,
   }) async {
     if (!hasPermission(StaffPermission.canAddAppointments) || _currentUser == null) {
       return false;
@@ -860,6 +861,7 @@ class AppState extends ChangeNotifier {
           amount: amountStr,
           notes: notes,
           status: status.isNotEmpty ? status : null,
+          discountId: discountId,
         );
       } else {
         await _api.createAppointment(
@@ -875,6 +877,7 @@ class AppState extends ChangeNotifier {
           staffId: staffId.isNotEmpty ? staffId : null,
           amount: amountStr,
           notes: notes,
+          discountId: discountId,
         );
       }
       await reloadAppointments();

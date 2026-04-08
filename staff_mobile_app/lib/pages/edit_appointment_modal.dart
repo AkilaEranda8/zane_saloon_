@@ -112,8 +112,10 @@ class _EditApptSheetState extends State<_EditApptSheet> {
   String _status   = 'pending';
   String _date     = '';
   String _time     = '';
+  String _discountId = '';
   final List<String> _serviceIds = [];
   List<Customer> _customers = const [];
+  List<Map<String, dynamic>> _discounts = const [];
 
   @override
   void initState() {
@@ -128,6 +130,7 @@ class _EditApptSheetState extends State<_EditApptSheet> {
     _noteCtrl.text = AppointmentNotes.stripAdditionalServicesLine(a.notes);
     _branchId      = a.branchId.isNotEmpty ? a.branchId : widget.fixedBranchId;
     _staffId       = a.staffId;
+    _discountId    = a.discountId;
     _status        = _kStatuses.contains(a.status) ? a.status : 'pending';
     _initServiceIds(a);
   }
@@ -149,6 +152,7 @@ class _EditApptSheetState extends State<_EditApptSheet> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadCustomers();
+    _loadDiscounts();
   }
 
   Future<void> _loadCustomers() async {
@@ -156,6 +160,19 @@ class _EditApptSheetState extends State<_EditApptSheet> {
       final list = await AppStateScope.of(context).loadCustomers();
       if (mounted) setState(() => _customers = list);
     } catch (_) {}
+  }
+
+  Future<void> _loadDiscounts() async {
+    final branch = _branchId.trim();
+    if (branch.isEmpty) return;
+    final rows = await AppStateScope.of(context).loadDiscountsForPayment(branch);
+    if (!mounted) return;
+    setState(() {
+      _discounts = rows;
+      if (_discountId.isNotEmpty && !_discounts.any((d) => '${d['id']}' == _discountId)) {
+        _discountId = '';
+      }
+    });
   }
 
   double get _calcTotal {
@@ -244,6 +261,7 @@ class _EditApptSheetState extends State<_EditApptSheet> {
       baseNotes: _noteCtrl.text.trim(),
       status: _status,
       amountOverride: _amtCtrl.text.trim(),
+      discountId: _discountId,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -653,6 +671,30 @@ class _EditApptSheetState extends State<_EditApptSheet> {
 
               const SizedBox(height: 12),
 
+              _label('DISCOUNT (OPTIONAL)'),
+              DropdownButtonFormField<String>(
+                initialValue: _discountId.isEmpty ? '' : _discountId,
+                isExpanded: true,
+                decoration: _deco('Select discount', Icons.local_offer_outlined),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('No discount')),
+                  ..._discounts.map((d) {
+                    final id = '${d['id']}';
+                    final name = '${d['name'] ?? 'Discount'}';
+                    final type = '${d['discount_type'] ?? 'percent'}';
+                    final val = '${d['value'] ?? ''}';
+                    final suffix = type == 'fixed' ? 'LKR $val' : '$val%';
+                    return DropdownMenuItem(
+                      value: id,
+                      child: Text('$name ($suffix)', overflow: TextOverflow.ellipsis),
+                    );
+                  }),
+                ],
+                onChanged: (v) => setState(() => _discountId = v ?? ''),
+              ),
+
+              const SizedBox(height: 12),
+
               // ── Date + Time ───────────────────────────────────────────
               Row(children: [
                 Expanded(
@@ -723,7 +765,10 @@ class _EditApptSheetState extends State<_EditApptSheet> {
                                         style: const TextStyle(fontSize: 13)),
                                   ))
                               .toList(),
-                          onChanged: (v) => setState(() => _branchId = v ?? ''),
+                          onChanged: (v) async {
+                            setState(() => _branchId = v ?? '');
+                            await _loadDiscounts();
+                          },
                           validator: (v) =>
                               v == null || v.isEmpty ? 'Required' : null,
                         ),

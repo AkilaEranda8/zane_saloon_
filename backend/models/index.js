@@ -5,6 +5,7 @@ const Staff              = require('./Staff');
 const StaffSpecialization = require('./StaffSpecialization');
 const Customer           = require('./Customer');
 const Appointment        = require('./Appointment');
+const AppointmentService = require('./AppointmentService');
 const Payment            = require('./Payment');
 const PaymentSplit       = require('./PaymentSplit');
 const Inventory          = require('./Inventory');
@@ -69,11 +70,17 @@ Appointment.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 Appointment.belongsTo(Staff,    { foreignKey: 'staff_id',    as: 'staff' });
 Appointment.belongsTo(Service,  { foreignKey: 'service_id',  as: 'service' });
 Appointment.belongsTo(Discount, { foreignKey: 'discount_id', as: 'discount' });
+Appointment.hasMany(AppointmentService, { foreignKey: 'appointment_id', as: 'appointmentServices' });
 Appointment.hasMany(Payment,    { foreignKey: 'appointment_id', as: 'payments' });
 Appointment.belongsTo(Appointment, { foreignKey: 'recurrence_parent_id', as: 'recurrenceParent' });
 Appointment.hasMany(Appointment,   { foreignKey: 'recurrence_parent_id', as: 'recurrenceChildren' });
 Appointment.belongsTo(Appointment, { foreignKey: 'next_appointment_id',  as: 'nextAppointment' });
 Discount.hasMany(Appointment,   { foreignKey: 'discount_id', as: 'appointments' });
+
+// ── AppointmentService ────────────────────────────────────────────────────────
+AppointmentService.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment' });
+AppointmentService.belongsTo(Service,     { foreignKey: 'service_id',     as: 'service' });
+Service.hasMany(AppointmentService,       { foreignKey: 'service_id',     as: 'appointmentServices' });
 
 // ── Payment ───────────────────────────────────────────────────────────────────
 Payment.belongsTo(Branch,      { foreignKey: 'branch_id',      as: 'branch' });
@@ -144,6 +151,7 @@ module.exports = {
   StaffSpecialization,
   Customer,
   Appointment,
+  AppointmentService,
   Payment,
   PaymentSplit,
   Inventory,
