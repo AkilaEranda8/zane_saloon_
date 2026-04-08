@@ -373,15 +373,8 @@ export default function AppointmentsPage() {
     const bid = form.branch_id || user?.branch_id;
     if (bid) {
       api.get('/discounts/appointment', { params: { branchId: bid } })
-        .then((r) => {
-          // Handle both response formats: { data: [...] } and [...]
-          const discountList = r.data?.data ? r.data.data : (Array.isArray(r.data) ? r.data : []);
-          setApptDiscounts(discountList);
-        })
-        .catch((err) => {
-          console.error('Error loading appointment discounts:', err);
-          setApptDiscounts([]);
-        });
+        .then((r) => setApptDiscounts(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+        .catch(() => setApptDiscounts([]));
     } else {
       setApptDiscounts([]);
     }
@@ -406,11 +399,8 @@ export default function AppointmentsPage() {
     if (bid) {
       try {
         const dr = await api.get('/discounts/payment', { params: { branchId: bid } });
-        // Handle both response formats: { data: [...] } and [...]
-        const discountList = dr.data?.data ? dr.data.data : (Array.isArray(dr.data) ? dr.data : []);
-        setPaymentDiscounts(discountList);
-      } catch (err) {
-        console.error('Error loading discounts:', err);
+        setPaymentDiscounts(Array.isArray(dr.data) ? dr.data : (dr.data?.data ?? []));
+      } catch {
         setPaymentDiscounts([]);
       }
     } else {
@@ -436,6 +426,18 @@ export default function AppointmentsPage() {
     const net = Math.max(0, gross - promo);
     setPaymentAmt(net > 0 ? String(net) : '');
   }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
+  // Appointment discount calculation effect
+  useEffect(() => {
+    if (!showForm || !apptDiscountId) return;
+    const gross = calcServiceTotal(apptServiceIds);
+    const sel = apptDiscounts.find((d) => String(d.id) === String(apptDiscountId));
+    if (sel) {
+      const promo = computePromoFromDiscount(sel, gross);
+      const net = Math.max(0, gross - promo);
+      setForm(f => ({ ...f, amount: net > 0 ? String(net) : '' }));
+    }
+  }, [showForm, apptDiscountId, apptServiceIds, apptDiscounts]);
+
   const handlePayment = async () => {
     if (paymentAppt?.status !== 'in_service') {
       return setPaymentErr('Payment can be collected only when status is In Service.');
@@ -527,15 +529,8 @@ export default function AppointmentsPage() {
     const bid = row.branch_id || row.branch?.id || user?.branch_id;
     if (bid) {
       api.get('/discounts/appointment', { params: { branchId: bid } })
-        .then((r) => {
-          // Handle both response formats: { data: [...] } and [...]
-          const discountList = r.data?.data ? r.data.data : (Array.isArray(r.data) ? r.data : []);
-          setApptDiscounts(discountList);
-        })
-        .catch((err) => {
-          console.error('Error loading appointment discounts:', err);
-          setApptDiscounts([]);
-        });
+        .then((r) => setApptDiscounts(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+        .catch(() => setApptDiscounts([]));
     }
     setShowCustomerDrop(false);
     setFormErr('');
@@ -953,16 +948,18 @@ export default function AppointmentsPage() {
                     Rs. {calcServiceTotal(paymentServices).toLocaleString()}
                   </div>
                 </FormGroup>
-                <FormGroup label="Promo discount (Optional)">
-                  <Select value={paymentDiscountId || ''} onChange={e => setPaymentDiscountId(e.target.value)} disabled={paymentDiscounts.length === 0}>
-                    <option value="">{paymentDiscounts.length === 0 ? 'No discounts available' : 'None'}</option>
-                    {paymentDiscounts.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})
-                      </option>
-                    ))}
-                  </Select>
-                </FormGroup>
+                {paymentDiscounts.length > 0 && (
+                  <FormGroup label="Promo discount">
+                    <Select value={paymentDiscountId || ''} onChange={e => setPaymentDiscountId(e.target.value)}>
+                      <option value="">None</option>
+                      {paymentDiscounts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                )}
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 <FormGroup label="Paid (Rs.)" required>
