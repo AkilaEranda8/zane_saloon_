@@ -7,7 +7,7 @@ const router = Router();
 router.use(verifyToken, branchAccess);
 
 router.get('/payment', ctrl.listForPayment);
-router.get('/appointment', ctrl.listForAppointment);
+router.get('/appointment', ctrl.listForPayment);
 router.get('/preview/:id', ctrl.preview);
 router.get('/', requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.list);
 router.get('/:id', requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.getOne);
