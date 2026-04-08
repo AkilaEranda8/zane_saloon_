@@ -376,6 +376,12 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (!mounted) return;
     final svcs = app.services;
 
+    Appointment target = a;
+    final full = await app.loadAppointmentById(a.id);
+    if (full != null) {
+      target = full;
+    }
+
     final ids = <String>[];
     void addId(String raw) {
       final v = raw.trim();
@@ -442,22 +448,22 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       return null;
     }
 
-    if (a.serviceIds.isNotEmpty) {
-      for (final raw in a.serviceIds) {
+    if (target.serviceIds.isNotEmpty) {
+      for (final raw in target.serviceIds) {
         addId(raw);
       }
     }
     if (ids.isEmpty) {
-      addId(a.serviceId);
+      addId(target.serviceId);
     }
-    for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
+    for (final name in AppointmentNotes.parseAdditionalServiceNames(target.notes)) {
       final sid = findServiceIdByName(name);
       if (sid != null) addId(sid);
     }
-    final initialAmt = a.displayAmount > 0 ? a.displayAmount.toStringAsFixed(0) : '';
+    final initialAmt = target.displayAmount > 0 ? target.displayAmount.toStringAsFixed(0) : '';
 
-    final branchKey = a.branchId.trim().isNotEmpty
-        ? a.branchId
+    final branchKey = target.branchId.trim().isNotEmpty
+        ? target.branchId
         : (app.currentUser?.branchId ?? '');
     var discounts = const <Map<String, dynamic>>[];
     if (branchKey.isNotEmpty) {
@@ -470,7 +476,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PaySheet(
-        appointment: a,
+        appointment: target,
         services: svcs,
         preSelected: ids,
         initialAmount: initialAmt,
@@ -480,14 +486,14 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
 
     if (result == null || !mounted) return;
     final success = await app.collectAppointmentPayment(
-      appointment: a,
+      appointment: target,
       amount: result.amount,
       method: result.method,
       paymentServiceIds: result.serviceIds,
       subtotal: result.subtotal,
       discountId: result.discountId.isNotEmpty ? result.discountId : null,
       promoDiscount: result.promoDiscount,
-      phone: a.phone.trim().isEmpty ? null : a.phone.trim(),
+      phone: target.phone.trim().isEmpty ? null : target.phone.trim(),
     );
     if (!mounted) return;
     if (!success) { _toast(app.lastError ?? 'Payment failed'); return; }
