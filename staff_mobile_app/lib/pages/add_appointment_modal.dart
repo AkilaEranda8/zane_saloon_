@@ -60,10 +60,8 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   String _custId   = '';
   String _date     = '';
   String _time     = '';
-  String _discountId = '';
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
-  List<Map<String, dynamic>> _discounts = const [];
 
   List<Map<String, dynamic>> _customerPackages = [];
   String  _selectedPkgId   = '';
@@ -100,9 +98,6 @@ class _AddApptSheetState extends State<_AddApptSheet> {
         _staff = await app.loadStaffList(
             branchId: _branchId.isEmpty ? null : _branchId);
       } catch (_) {}
-      if (_branchId.isNotEmpty) {
-        _discounts = await app.loadDiscountsForPayment(_branchId);
-      }
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
     }
@@ -241,7 +236,6 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       baseNotes: pkgNote,
       status: '',
       amountOverride: _amtCtrl.text.trim(),
-      discountId: _discountId,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -923,27 +917,8 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                                   fontSize: 13)),
                                         ))
                                     .toList(),
-                                onChanged: (v) async {
-                                  final nextBranch = v ?? '';
-                                  setState(() {
-                                    _branchId = nextBranch;
-                                    _discountId = '';
-                                  });
-                                  try {
-                                    final app = AppStateScope.of(context);
-                                    final staff = await app.loadStaffList(
-                                      branchId: nextBranch.isEmpty ? null : nextBranch,
-                                    );
-                                    final discounts = nextBranch.isEmpty
-                                        ? const <Map<String, dynamic>>[]
-                                        : await app.loadDiscountsForPayment(nextBranch);
-                                    if (!mounted) return;
-                                    setState(() {
-                                      _staff = staff;
-                                      _discounts = discounts;
-                                    });
-                                  } catch (_) {}
-                                },
+                                onChanged: (v) =>
+                                    setState(() => _branchId = v ?? ''),
                                 validator: (v) =>
                                     v == null || v.isEmpty ? 'Required' : null,
                               ),
@@ -952,30 +927,6 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         ),
                       ],
                     ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  _label('DISCOUNT (OPTIONAL)'),
-                  DropdownButtonFormField<String>(
-                    initialValue: _discountId.isEmpty ? '' : _discountId,
-                    isExpanded: true,
-                    decoration: _deco('Select discount', Icons.local_offer_outlined),
-                    items: [
-                      const DropdownMenuItem(value: '', child: Text('No discount')),
-                      ..._discounts.map((d) {
-                        final id = '${d['id']}';
-                        final name = '${d['name'] ?? 'Discount'}';
-                        final type = '${d['discount_type'] ?? 'percent'}';
-                        final val = '${d['value'] ?? ''}';
-                        final suffix = type == 'fixed' ? 'LKR $val' : '$val%';
-                        return DropdownMenuItem(
-                          value: id,
-                          child: Text('$name ($suffix)', overflow: TextOverflow.ellipsis),
-                        );
-                      }),
-                    ],
-                    onChanged: (v) => setState(() => _discountId = v ?? ''),
                   ),
 
                   const SizedBox(height: 20),

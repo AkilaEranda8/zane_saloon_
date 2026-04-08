@@ -57,33 +57,6 @@ const listForPayment = async (req, res) => {
   }
 };
 
-/** Active discounts for appointment form (branch + date). */
-const listForAppointment = async (req, res) => {
-  try {
-    const qRaw = req.query.branchId;
-    const q = qRaw === undefined || qRaw === null || qRaw === ''
-      ? null
-      : (Array.isArray(qRaw) ? qRaw[0] : qRaw);
-    // Staff/manager: always use JWT branch; admins use query.branchId
-    let branchId = req.userBranchId != null && req.userBranchId !== ''
-      ? Number(req.userBranchId)
-      : (q != null && q !== '' ? Number(q) : null);
-    if (branchId != null && Number.isNaN(branchId)) branchId = null;
-    if (!branchId) {
-      return res.status(400).json({ message: 'branchId is required.' });
-    }
-    const rows = await Discount.findAll({
-      where: activeDiscountWhere(branchId),
-      order: [['name', 'ASC']],
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'], required: false }],
-    });
-    return res.json({ data: rows });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
 const getOne = async (req, res) => {
   try {
     const row = await Discount.findByPk(req.params.id, {
@@ -181,5 +154,5 @@ const preview = async (req, res) => {
 };
 
 module.exports = {
-  list, listForPayment, listForAppointment, getOne, create, update, remove, preview,
+  list, listForPayment, getOne, create, update, remove, preview,
 };

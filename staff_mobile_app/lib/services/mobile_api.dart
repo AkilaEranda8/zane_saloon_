@@ -302,7 +302,6 @@ class MobileApi {
     String? staffId,
     String? amount,
     String? notes,
-    String? discountId,
   }) async {
     final bodyMap = <String, dynamic>{
       'branch_id': int.tryParse(branchId) ?? branchId,
@@ -317,8 +316,6 @@ class MobileApi {
       if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
       if (amount != null && amount.trim().isNotEmpty) 'amount': double.tryParse(amount.trim()) ?? amount,
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
-      if (discountId != null && discountId.trim().isNotEmpty)
-        'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
     };
     final response = await http.post(
       Uri.parse('$baseUrl/api/appointments'),
@@ -345,7 +342,6 @@ class MobileApi {
     String? amount,
     String? notes,
     String? status,
-    String? discountId,
   }) async {
     final bodyMap = <String, dynamic>{
       'customer_name': customerName.trim(),
@@ -360,9 +356,6 @@ class MobileApi {
       if (amount != null && amount.trim().isNotEmpty) 'amount': double.tryParse(amount.trim()) ?? amount,
       'notes': notes ?? '',
       if (status != null && status.isNotEmpty) 'status': status,
-      if (discountId != null && discountId.trim().isNotEmpty)
-        'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
-      if (discountId != null && discountId.trim().isEmpty) 'discount_id': null,
     };
     final response = await http.put(
       Uri.parse('$baseUrl/api/appointments/$appointmentId'),
