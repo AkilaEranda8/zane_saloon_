@@ -185,9 +185,6 @@ const create = async (req, res) => {
     console.error('[CREATE APPOINTMENT ERROR]', err.message, err.stack);
     return res.status(500).json({ message: 'Server error.', debug: err.message });
   }
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
 };
 
 const update = async (req, res) => {
@@ -233,14 +230,11 @@ const update = async (req, res) => {
           where: { id: incomingServiceIds },
           attributes: ['id', 'price'],
         });
-      staff_id: appt.staff_id,
-        const update = async (req, res) => {
-      service_id: appt.service_id,
-      date: appt.date,
-    };
-    const prevStaffId = appt.staff_id;
-    const primaryServiceId = updates.service_id || appt.service_id;
     await appt.update(updates);
+          } catch (err) {
+            console.error('[CREATE APPOINTMENT ERROR]', err.message, err.stack);
+            return res.status(500).json({ message: 'Server error.', debug: err.message });
+          }
 
     // Keep linked payment records in sync with appointment edits.
     const paymentUpdates = {};

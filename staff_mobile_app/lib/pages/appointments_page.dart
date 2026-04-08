@@ -389,7 +389,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       if (needle.isEmpty) return null;
       final needleWords = needle.split(RegExp(r'\s+'));
 
-      List<(String id, String origName)> exactMatches = [];
+      List<(String, String)> exactMatches = [];
       for (final s in svcs) {
         final cand = normName(s.name);
         if (cand == needle) {
@@ -397,11 +397,11 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         }
       }
       if (exactMatches.isNotEmpty) {
-        exactMatches.sort((a, b) => a.origName.length.compareTo(b.origName.length));
-        return exactMatches.first.id;
+        exactMatches.sort((a, b) => a.$2.length.compareTo(b.$2.length));
+        return exactMatches.first.$1;
       }
 
-      List<(String id, String origName)> substringMatches = [];
+      List<(String, String)> substringMatches = [];
       for (final s in svcs) {
         final cand = normName(s.name);
         if (cand.contains(needle) || needle.contains(cand)) {
@@ -409,11 +409,11 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         }
       }
       if (substringMatches.isNotEmpty) {
-        substringMatches.sort((a, b) => a.origName.length.compareTo(b.origName.length));
-        return substringMatches.first.id;
+        substringMatches.sort((a, b) => a.$2.length.compareTo(b.$2.length));
+        return substringMatches.first.$1;
       }
 
-      List<(String id, String origName, int score)> wordMatches = [];
+      List<(String, String, int)> wordMatches = [];
       for (final s in svcs) {
         final cand = normName(s.name);
         final candWords = cand.split(RegExp(r'\s+'));
@@ -426,11 +426,11 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       }
       if (wordMatches.isNotEmpty) {
         wordMatches.sort((a, b) {
-          final cmp = b.score.compareTo(a.score);
+          final cmp = b.$3.compareTo(a.$3);
           if (cmp != 0) return cmp;
-          return a.origName.length.compareTo(b.origName.length);
+          return a.$2.length.compareTo(b.$2.length);
         });
-        return wordMatches.first.id;
+        return wordMatches.first.$1;
       }
       return null;
     }
