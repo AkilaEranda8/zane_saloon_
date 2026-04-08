@@ -448,7 +448,8 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       return null;
     }
 
-    if (target.serviceIds.isNotEmpty) {
+    final hasDbServiceIds = target.serviceIds.isNotEmpty;
+    if (hasDbServiceIds) {
       for (final raw in target.serviceIds) {
         addId(raw);
       }
@@ -456,9 +457,12 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (ids.isEmpty) {
       addId(target.serviceId);
     }
-    for (final name in AppointmentNotes.parseAdditionalServiceNames(target.notes)) {
-      final sid = findServiceIdByName(name);
-      if (sid != null) addId(sid);
+    // Parse notes only for legacy records that don't have service IDs persisted.
+    if (!hasDbServiceIds) {
+      for (final name in AppointmentNotes.parseAdditionalServiceNames(target.notes)) {
+        final sid = findServiceIdByName(name);
+        if (sid != null) addId(sid);
+      }
     }
     final initialAmt = target.displayAmount > 0 ? target.displayAmount.toStringAsFixed(0) : '';
 
