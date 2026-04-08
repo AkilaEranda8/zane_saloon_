@@ -181,13 +181,48 @@ const create = async (req, res) => {
       }
     }
 
-    // Mark appointment commission
+    // Sync appointment financial/service snapshot from this payment
     if (appointment_id) {
       const { Appointment: ApptModel } = require('../models');
-      await ApptModel.update({ commission_paid: commission_amount }, {
-        where: { id: appointment_id },
-        transaction: t,
-      });
+      const selectedServiceIds = Array.isArray(req.body.service_ids)
+        ? req.body.service_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+      const primaryServiceId = selectedServiceIds[0] || Number(service_id || 0) || null;
+
+      const appt = await ApptModel.findByPk(appointment_id, { transaction: t });
+      if (appt) {
+        const svcRows = selectedServiceIds.length
+          ? await Service.findAll({
+              where: { id: selectedServiceIds },
+              attributes: ['id', 'name'],
+              transaction: t,
+            })
+          : [];
+        const nameById = new Map(svcRows.map((s) => [Number(s.id), s.name]));
+        const extraServiceNames = selectedServiceIds
+          .slice(1)
+          .map((id) => nameById.get(Number(id)))
+          .filter(Boolean);
+        const strippedNotes = String(appt.notes || '')
+          .split('\n')
+          .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
+          .join('\n')
+          .trim();
+        const extraLine = extraServiceNames.length
+          ? `Additional services: ${extraServiceNames.join(', ')}`
+          : '';
+        const nextNotes = [strippedNotes, extraLine].filter(Boolean).join('\n');
+
+        await appt.update({
+          commission_paid: commission_amount,
+          service_id: primaryServiceId || appt.service_id,
+          amount: Number(total_amount || 0),
+          discount_id: savedDiscountId || null,
+          notes: nextNotes,
+        }, { transaction: t });
+      }
     }
 
     await t.commit();
