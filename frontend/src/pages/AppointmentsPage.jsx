@@ -455,7 +455,7 @@ export default function AppointmentsPage() {
         service_ids: paymentServices,
         appointment_id: paymentAppt.id,
         customer_name: paymentAppt.customer_name,
-        subtotal,
+        total_amount: subtotal,
         loyalty_discount: 0,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
