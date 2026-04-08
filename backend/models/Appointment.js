@@ -76,6 +76,12 @@ const Appointment = sequelize.define('Appointment', {
     references: { model: 'appointments', key: 'id' },
     onDelete: 'SET NULL',
   },
+  discount_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'discounts', key: 'id' },
+    onDelete: 'SET NULL',
+  },
 }, {
   tableName: 'appointments',
   timestamps: true,

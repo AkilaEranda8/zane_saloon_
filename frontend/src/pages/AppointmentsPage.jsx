@@ -337,6 +337,8 @@ export default function AppointmentsPage() {
   const [customerPackages, setCustomerPackages] = useState([]);
   const [loadingCustomerPackages, setLoadingCustomerPackages] = useState(false);
   const [selectedCustomerPackageId, setSelectedCustomerPackageId] = useState('');
+  const [apptDiscountId, setApptDiscountId] = useState('');
+  const [apptDiscounts, setApptDiscounts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -367,7 +369,16 @@ export default function AppointmentsPage() {
       .then((r) => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
       .catch(() => setCustomers([]))
       .finally(() => setCustomerLoading(false));
-  }, [showForm, form.branch_id]);
+    // Load appointment discounts if branch is set
+    const bid = form.branch_id || user?.branch_id;
+    if (bid) {
+      api.get('/discounts/appointment', { params: { branchId: bid } })
+        .then((r) => setApptDiscounts(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+        .catch(() => setApptDiscounts([]));
+    } else {
+      setApptDiscounts([]);
+    }
+  }, [showForm, form.branch_id, user?.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = async (row) => {
@@ -463,7 +474,7 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setApptDiscountId(''); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
   const openEdit   = row => {
     const sid = Number(row.service?.id || row.service_id || 0);
     const extraNames = parseAdditionalServiceNames(row.notes || '');
@@ -487,8 +498,10 @@ export default function AppointmentsPage() {
       notes: stripAdditionalServicesLine(row.notes || ''),
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
+      discount_id: row.discount?.id || row.discount_id || '',
     });
     setApptServiceIds(selectedIds);
+    setApptDiscountId(String(row.discount?.id || row.discount_id || ''));
     setCustomerSearch(row.customer_name || '');
     const pkgSel = parsePackageSelection(row.notes || '');
     setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
@@ -499,6 +512,13 @@ export default function AppointmentsPage() {
         .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
         .catch(() => setCustomerPackages([]))
         .finally(() => setLoadingCustomerPackages(false));
+    }
+    // Load appointment discounts
+    const bid = row.branch_id || row.branch?.id || user?.branch_id;
+    if (bid) {
+      api.get('/discounts/appointment', { params: { branchId: bid } })
+        .then((r) => setApptDiscounts(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+        .catch(() => setApptDiscounts([]));
     }
     setShowCustomerDrop(false);
     setFormErr('');
@@ -517,6 +537,7 @@ export default function AppointmentsPage() {
         ...form,
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
+        discount_id: apptDiscountId || null,
         amount: (() => {
           if (selectedCustomerPackageId) {
             const cp = customerPackages.find((p) => String(p.id) === String(selectedCustomerPackageId));
@@ -848,8 +869,11 @@ export default function AppointmentsPage() {
             <FormGroup label="Status"><Select value={form.status||'pending'} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
               {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </Select></FormGroup>
-            <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
+            <FormGroup label="Discount (Optional)"><Select value={apptDiscountId||''} onChange={e=>setApptDiscountId(e.target.value)}>
+              <option value="">No discount</option>{apptDiscounts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+            </Select></FormGroup>
           </div>
+          <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
         </div>
       </Modal>
 

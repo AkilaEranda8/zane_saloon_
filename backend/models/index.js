@@ -68,10 +68,12 @@ Appointment.belongsTo(Branch,   { foreignKey: 'branch_id',   as: 'branch' });
 Appointment.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 Appointment.belongsTo(Staff,    { foreignKey: 'staff_id',    as: 'staff' });
 Appointment.belongsTo(Service,  { foreignKey: 'service_id',  as: 'service' });
+Appointment.belongsTo(Discount, { foreignKey: 'discount_id', as: 'discount' });
 Appointment.hasMany(Payment,    { foreignKey: 'appointment_id', as: 'payments' });
 Appointment.belongsTo(Appointment, { foreignKey: 'recurrence_parent_id', as: 'recurrenceParent' });
 Appointment.hasMany(Appointment,   { foreignKey: 'recurrence_parent_id', as: 'recurrenceChildren' });
 Appointment.belongsTo(Appointment, { foreignKey: 'next_appointment_id',  as: 'nextAppointment' });
+Discount.hasMany(Appointment,   { foreignKey: 'discount_id', as: 'appointments' });
 
 // ── Payment ───────────────────────────────────────────────────────────────────
 Payment.belongsTo(Branch,      { foreignKey: 'branch_id',      as: 'branch' });

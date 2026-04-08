@@ -46,6 +46,10 @@ async function addIfMissing(table, column, definition) {
 
     // ── payments missing columns ──────────────────────────────────────────────
     await addIfMissing('payments', 'promo_discount', { type: DataTypes.DECIMAL(10, 2), defaultValue: 0, allowNull: true });
+    await addIfMissing('payments', 'discount_id', { type: DataTypes.INTEGER, allowNull: true, references: { model: 'discounts', key: 'id' }, onDelete: 'SET NULL' });
+
+    // ── appointments missing columns ──────────────────────────────────────────
+    await addIfMissing('appointments', 'discount_id', { type: DataTypes.INTEGER, allowNull: true, references: { model: 'discounts', key: 'id' }, onDelete: 'SET NULL' });
 
     // ── staff missing columns ────────────────────────────────────────────────
     await addIfMissing('staff', 'email', { type: DataTypes.STRING, allowNull: true });

@@ -35,6 +35,7 @@ const list = async (req, res) => {
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] },
         { model: Staff,    as: 'staff',    attributes: ['id', 'name'] },
         { model: Service,  as: 'service',  attributes: ['id', 'name', 'price', 'duration_minutes'] },
+        { model: require('../models').Discount, as: 'discount', attributes: ['id', 'name'] },
       ],
     });
 
@@ -68,6 +69,7 @@ const calendar = async (req, res) => {
         { model: Staff,   as: 'staff',   attributes: ['id', 'name'] },
         { model: Service, as: 'service', attributes: ['id', 'name'] },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name', 'color'] },
+        { model: require('../models').Discount, as: 'discount', attributes: ['id', 'name'] },
       ],
     });
 
@@ -92,6 +94,7 @@ const getOne = async (req, res) => {
         { model: Customer, as: 'customer' },
         { model: Staff,    as: 'staff'    },
         { model: Service,  as: 'service'  },
+        { model: require('../models').Discount, as: 'discount' },
       ],
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
@@ -171,7 +174,7 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
-    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
+    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status', 'discount_id'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
