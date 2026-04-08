@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, AppointmentService, Branch, Customer, Staff, Service, Payment } = require('../models');
+const { sequelize, Appointment, AppointmentService, Branch, Customer, Staff, Service, Payment } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
@@ -27,6 +27,26 @@ const list = async (req, res) => {
 
     const { count, rows } = await Appointment.findAndCountAll({
       where,
+      attributes: {
+        include: [
+          [
+            sequelize.literal('(SELECT p.total_amount FROM payments p WHERE p.appointment_id = Appointment.id ORDER BY p.createdAt DESC LIMIT 1)'),
+            'paid_total_amount',
+          ],
+          [
+            sequelize.literal('(SELECT p.loyalty_discount FROM payments p WHERE p.appointment_id = Appointment.id ORDER BY p.createdAt DESC LIMIT 1)'),
+            'paid_loyalty_discount',
+          ],
+          [
+            sequelize.literal('(SELECT p.promo_discount FROM payments p WHERE p.appointment_id = Appointment.id ORDER BY p.createdAt DESC LIMIT 1)'),
+            'paid_promo_discount',
+          ],
+          [
+            sequelize.literal('(SELECT p.discount_id FROM payments p WHERE p.appointment_id = Appointment.id ORDER BY p.createdAt DESC LIMIT 1)'),
+            'paid_discount_id',
+          ],
+        ],
+      },
       limit,
       offset,
       order: [['date', 'DESC'], ['time', 'DESC']],

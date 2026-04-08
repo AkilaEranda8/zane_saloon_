@@ -18,6 +18,9 @@ class Appointment {
     this.phone = '',
     this.notes = '',
     this.amount = 0,
+    this.loyaltyDiscount = 0,
+    this.promoDiscount = 0,
+    this.discountId = '',
     this.staffId = '',
     this.customerId = '',
     this.branchName = '',
@@ -37,6 +40,9 @@ class Appointment {
   final String phone;
   final String notes;
   final double amount;
+  final double loyaltyDiscount;
+  final double promoDiscount;
+  final String discountId;
   final String staffId;
   final String customerId;
   final String branchName;
@@ -131,10 +137,19 @@ class Appointment {
     final staff = json['staff'];
     final customer = json['customer'];
     final branch = json['branch'];
-    final rawAmount = json['amount'];
+    final rawAmount = json['paid_total_amount'] ?? json['amount'];
+    final rawLoyalty = json['paid_loyalty_discount'] ?? json['loyalty_discount'];
+    final rawPromo = json['paid_promo_discount'] ?? json['promo_discount'];
+    final rawDiscountId = json['paid_discount_id'] ?? json['discount_id'];
     final amt = rawAmount is num
         ? rawAmount.toDouble()
         : double.tryParse('$rawAmount') ?? 0;
+    final loy = rawLoyalty is num
+      ? rawLoyalty.toDouble()
+      : double.tryParse('$rawLoyalty') ?? 0;
+    final promo = rawPromo is num
+      ? rawPromo.toDouble()
+      : double.tryParse('$rawPromo') ?? 0;
     final parsedIds = <String>[];
     for (final key in const [
       'service_ids',
@@ -164,6 +179,9 @@ class Appointment {
       phone: '${json['phone'] ?? (customer is Map ? customer['phone'] ?? '' : '')}',
       notes: '${json['notes'] ?? ''}',
       amount: amt,
+      loyaltyDiscount: loy,
+      promoDiscount: promo,
+      discountId: '${rawDiscountId ?? ''}',
       staffId: '${json['staff_id'] ?? staff?['id'] ?? ''}',
       customerId: '${json['customer_id'] ?? customer?['id'] ?? ''}',
       branchName: '${branch is Map ? branch['name'] ?? '' : ''}',
