@@ -13,12 +13,8 @@ const getBranchWhere = (req) => {
   }
   return where;
 };
-
-const list = async (req, res) => {
-  try {
-    const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
+    await appt.update(updates);
 
     const where = getBranchWhere(req);
     if (req.query.status)  where.status   = req.query.status;
@@ -44,14 +40,6 @@ const list = async (req, res) => {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
   }
-};
-
-const calendar = async (req, res) => {
-  try {
-    const year  = parseInt(req.query.year)  || new Date().getFullYear();
-    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
-    const pad   = (n) => String(n).padStart(2, '0');
-    const start = `${year}-${pad(month)}-01`;
     const last  = new Date(year, month, 0).getDate();
     const end   = `${year}-${pad(month)}-${pad(last)}`;
 
@@ -234,7 +222,6 @@ const update = async (req, res) => {
           } catch (err) {
             console.error('[CREATE APPOINTMENT ERROR]', err.message, err.stack);
             return res.status(500).json({ message: 'Server error.', debug: err.message });
-          }
 
     // Keep linked payment records in sync with appointment edits.
     const paymentUpdates = {};
