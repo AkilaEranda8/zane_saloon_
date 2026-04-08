@@ -487,51 +487,59 @@ export default function AppointmentsPage() {
   };
 
   const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setApptDiscountId(''); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
-  const openEdit   = row => {
-    const sid = Number(row.service?.id || row.service_id || 0);
-    const extraNames = parseAdditionalServiceNames(row.notes || '');
-    const extraIds = extraNames
-      .map(name => services.find(s => s.name === name)?.id)
-      .filter(Boolean)
-      .map(Number);
-    const selectedIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
+  const openEdit   = async (row) => {
+    let sourceRow = row;
+    try {
+      const r = await api.get(`/appointments/${row.id}`);
+      if (r?.data?.id) sourceRow = r.data;
+    } catch {
+      // fallback to row data
+    }
+
+    const selectedIds = getInitialPaymentServiceIds(sourceRow, services);
     const totalAmount = selectedIds.reduce((sum, id) => {
-      const s = services.find(x => Number(x.id) === Number(id));
+      const s = services.find((x) => Number(x.id) === Number(id));
       return sum + Number(s?.price || 0);
     }, 0);
-    setEditItem(row);
+
+    setEditItem(sourceRow);
     setForm({
-      ...row,
-      customer_id: row.customer?.id || row.customer_id || '',
-      service_id: row.service?.id || row.service_id,
-      staff_id: row.staff?.id || row.staff_id,
-      date: row.date?.slice(0,10) || '',
-      amount: totalAmount || row.amount || '',
-      notes: stripAdditionalServicesLine(row.notes || ''),
-      is_recurring: Boolean(row.is_recurring),
-      recurrence_frequency: row.recurrence_frequency || 'weekly',
-      discount_id: row.discount?.id || row.discount_id || '',
+      ...sourceRow,
+      customer_id: sourceRow.customer?.id || sourceRow.customer_id || '',
+      service_id: sourceRow.service?.id || sourceRow.service_id,
+      staff_id: sourceRow.staff?.id || sourceRow.staff_id,
+      date: sourceRow.date?.slice(0,10) || '',
+      amount: totalAmount || sourceRow.amount || '',
+      notes: stripAdditionalServicesLine(sourceRow.notes || ''),
+      is_recurring: Boolean(sourceRow.is_recurring),
+      recurrence_frequency: sourceRow.recurrence_frequency || 'weekly',
+      discount_id: sourceRow.discount?.id || sourceRow.discount_id || '',
     });
+
     setApptServiceIds(selectedIds);
-    setApptDiscountId(String(row.discount?.id || row.discount_id || ''));
-    setCustomerSearch(row.customer_name || '');
-    const pkgSel = parsePackageSelection(row.notes || '');
+    setApptDiscountId(String(sourceRow.discount?.id || sourceRow.discount_id || ''));
+    setCustomerSearch(sourceRow.customer_name || '');
+
+    const pkgSel = parsePackageSelection(sourceRow.notes || '');
     setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
     setCustomerPackages([]);
-    if (row.customer?.id || row.customer_id) {
+    if (sourceRow.customer?.id || sourceRow.customer_id) {
       setLoadingCustomerPackages(true);
-      api.get(`/packages/customer/${row.customer?.id || row.customer_id}/active`)
+      api.get(`/packages/customer/${sourceRow.customer?.id || sourceRow.customer_id}/active`)
         .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
         .catch(() => setCustomerPackages([]))
         .finally(() => setLoadingCustomerPackages(false));
     }
-    // Load appointment discounts
-    const bid = row.branch_id || row.branch?.id || user?.branch_id;
+
+    const bid = sourceRow.branch_id || sourceRow.branch?.id || user?.branch_id;
     if (bid) {
       api.get('/discounts/appointment', { params: { branchId: bid } })
         .then((r) => setApptDiscounts(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
         .catch(() => setApptDiscounts([]));
+    } else {
+      setApptDiscounts([]);
     }
+
     setShowCustomerDrop(false);
     setFormErr('');
     setShowForm(true);
@@ -551,11 +559,18 @@ export default function AppointmentsPage() {
         service_ids: apptServiceIds,
         discount_id: apptDiscountId || null,
         amount: (() => {
-          if (selectedCustomerPackageId) {
-            const cp = customerPackages.find((p) => String(p.id) === String(selectedCustomerPackageId));
-            if (cp?.package?.package_price) return Number(cp.package.package_price);
-          }
-          return selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount;
+          const grossAmount = (() => {
+            if (selectedCustomerPackageId) {
+              const cp = customerPackages.find((p) => String(p.id) === String(selectedCustomerPackageId));
+              if (cp?.package?.package_price) return Number(cp.package.package_price);
+            }
+            return selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || Number(form.amount || 0);
+          })();
+          const selectedDiscount = apptDiscountId
+            ? apptDiscounts.find((d) => String(d.id) === String(apptDiscountId))
+            : null;
+          const promo = selectedDiscount ? computePromoFromDiscount(selectedDiscount, grossAmount) : 0;
+          return Math.max(0, grossAmount - promo);
         })(),
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
