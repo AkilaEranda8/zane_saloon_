@@ -113,8 +113,17 @@ const getOne = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { branch_id, customer_id, staff_id, service_id, service_ids, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
+    const toNullableInt = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = Number(v);
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+    const normalizedBranchId = toNullableInt(branch_id);
+    const normalizedCustomerId = toNullableInt(customer_id);
+    const normalizedStaffId = toNullableInt(staff_id);
+    const normalizedDiscountId = toNullableInt(discount_id);
 
-    if (!branch_id || !service_id || !customer_name || !date || !time) {
+    if (!normalizedBranchId || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
@@ -142,9 +151,9 @@ const create = async (req, res) => {
 
     const appt = await Appointment.sequelize.transaction(async (tx) => {
       const createdAppt = await Appointment.create({
-        branch_id,
-        customer_id,
-        staff_id,
+        branch_id: normalizedBranchId,
+        customer_id: normalizedCustomerId,
+        staff_id: normalizedStaffId,
         service_id: normalizedPrimaryServiceId,
         customer_name,
         phone,
@@ -152,7 +161,7 @@ const create = async (req, res) => {
         time,
         amount: finalAmount,
         notes,
-        discount_id: discount_id || null,
+        discount_id: normalizedDiscountId,
         is_recurring: is_recurring || false,
         recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
       }, { transaction: tx });
@@ -167,35 +176,35 @@ const create = async (req, res) => {
     });
 
     // Fire-and-forget notification — use request phone or fall back to customer record
-    const notifyPhone = phone || (customer_id
+    const notifyPhone = phone || (normalizedCustomerId
       ? await (async () => {
           const { Customer: CustModel } = require('../models');
-          const c = await CustModel.findByPk(customer_id, { attributes: ['phone'] });
+          const c = await CustModel.findByPk(normalizedCustomerId, { attributes: ['phone'] });
           return c?.phone || null;
         })()
       : null);
     if (notifyPhone) {
       const [branch, service] = await Promise.all([
-        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
+        Branch.findByPk(normalizedBranchId,   { attributes: ['id', 'name', 'phone'] }),
         Service.findByPk(normalizedPrimaryServiceId, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
 
     const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
-    if (staff_id) {
+    if (normalizedStaffId) {
       // Assigned to a specific staff — notify only them
-      notifyStaffUser(staff_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
+      notifyStaffUser(normalizedStaffId, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'appointment_assigned',
         appointment_id: String(appt.id),
-        branch_id: String(branch_id),
+        branch_id: String(normalizedBranchId),
       });
     } else {
       // No staff assigned yet — notify the whole branch
-      notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
+      notifyBranch(normalizedBranchId, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'new_appointment',
         appointment_id: String(appt.id),
-        branch_id: String(branch_id),
+        branch_id: String(normalizedBranchId),
       });
     }
 
