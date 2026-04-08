@@ -182,6 +182,10 @@ const create = async (req, res) => {
 
     return res.status(201).json(appt);
   } catch (err) {
+    console.error('[CREATE APPOINTMENT ERROR]', err.message, err.stack);
+    return res.status(500).json({ message: 'Server error.', debug: err.message });
+  }
+  } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
 };
