@@ -660,7 +660,7 @@ export default function AppointmentsPage() {
     if (!cp) return;
     const pkgServiceIds = (cp.package?.services || []).map(Number).filter(Boolean);
     if (!pkgServiceIds.length) return;
-    const availableSvcIds = services.filter((s) => s.is_active !== false).map((s) => Number(s.id));
+    const availableSvcIds = services.map((s) => Number(s.id));
     const nextIds = pkgServiceIds.filter((id) => availableSvcIds.includes(id));
     if (!nextIds.length) return;
     const pkgPrice = cp.package?.package_price ? Number(cp.package.package_price) : null;
@@ -669,6 +669,9 @@ export default function AppointmentsPage() {
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
+  const visibleFormServices = services.filter(
+    (s) => s.is_active !== false || apptServiceIds.includes(Number(s.id)),
+  );
   const counts = APPT_STATUSES.reduce((acc,s) => { acc[s]=appts.filter(a=>a.status===s).length; return acc; }, {});
   const totalPages = Math.ceil(total/LIMIT);
 
@@ -893,7 +896,7 @@ export default function AppointmentsPage() {
           </div>
           <FormGroup label="Services" required>
             <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
-              {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
+              {visibleFormServices.map((s, idx, arr) => {
                 const active = apptServiceIds.includes(Number(s.id));
                 return (
                   <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
@@ -906,7 +909,7 @@ export default function AppointmentsPage() {
             </div>
             {apptServiceIds.length > 0 && (
               <div style={{ marginTop:8, display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-                {services.filter(s => apptServiceIds.includes(Number(s.id))).map(s => (
+                {apptServiceIds.map((id) => services.find((s) => Number(s.id) === Number(id))).filter(Boolean).map(s => (
                   <span key={s.id} style={{ fontSize:12, color:'#047857', background:'#D1FAE5', border:'1px solid #A7F3D0', padding:'2px 8px', borderRadius:999, fontWeight:700 }}>
                     {s.name}
                   </span>

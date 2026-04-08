@@ -289,6 +289,24 @@ class MobileApi {
     );
   }
 
+  Future<Appointment> fetchAppointmentById({
+    required String token,
+    required String appointmentId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/appointments/$appointmentId'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Appointment load failed');
+    }
+    if (body is! Map<String, dynamic>) {
+      throw Exception('Invalid appointment payload');
+    }
+    return Appointment.fromJson(body);
+  }
+
   Future<void> createAppointment({
     required String token,
     required String branchId,

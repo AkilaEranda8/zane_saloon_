@@ -770,6 +770,24 @@ class AppState extends ChangeNotifier {
     return appointments;
   }
 
+  Future<Appointment?> loadAppointmentById(String appointmentId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot load appointment).';
+      return null;
+    }
+    try {
+      _lastError = null;
+      return await _api.fetchAppointmentById(
+        token: token,
+        appointmentId: appointmentId,
+      );
+    } catch (e) {
+      _lastError = _userFacingApiError(e);
+      return null;
+    }
+  }
+
   Future<void> reloadAppointments() async {
     await loadAppointments(
       page: _lastApptPage,

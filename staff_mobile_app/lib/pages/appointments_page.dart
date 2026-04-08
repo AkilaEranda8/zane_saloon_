@@ -161,6 +161,13 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       if (ok == true && mounted) await _load();
       return;
     }
+
+    Appointment target = e;
+    final full = await app.loadAppointmentById(e.id);
+    if (full != null) {
+      target = full;
+    }
+
     // Edit existing → navigate to the new full-screen edit page
     setState(() => _loading = true);
     final svcs = await app.loadServices();
@@ -168,7 +175,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     await app.loadCustomers();
     final ub   = app.currentUser?.branchId ?? '';
     String sb  = _isSuper
-        ? (e.branchId.isNotEmpty ? e.branchId
+      ? (target.branchId.isNotEmpty ? target.branchId
             : (_fBranch.isNotEmpty ? _fBranch : ub))
         : ub;
     if (sb.isEmpty) sb = ub;
@@ -178,7 +185,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     setState(() => _loading = false);
     final ok = await showEditAppointmentModal(
       context,
-      appointment:   e,
+      appointment:   target,
       services:      svcs,
       branches:      brs,
       staffList:     staff,
