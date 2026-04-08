@@ -306,6 +306,46 @@ const update = async (req, res) => {
 
     await payment.update(fields, { transaction: t });
 
+    const appointmentIdForSync = fields.appointment_id !== undefined
+      ? fields.appointment_id
+      : payment.appointment_id;
+    if (appointmentIdForSync && Array.isArray(req.body.service_ids)) {
+      const selectedServiceIds = req.body.service_ids
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      const primaryServiceId = selectedServiceIds[0] || fields.service_id || payment.service_id || null;
+      const appt = await Appointment.findByPk(appointmentIdForSync, { transaction: t });
+      if (appt) {
+        const svcRows = selectedServiceIds.length
+          ? await Service.findAll({
+              where: { id: selectedServiceIds },
+              attributes: ['id', 'name'],
+              transaction: t,
+            })
+          : [];
+        const nameById = new Map(svcRows.map((s) => [Number(s.id), s.name]));
+        const extraServiceNames = selectedServiceIds
+          .slice(1)
+          .map((id) => nameById.get(Number(id)))
+          .filter(Boolean);
+        const strippedNotes = String(appt.notes || '')
+          .split('\n')
+          .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
+          .join('\n')
+          .trim();
+        const extraLine = extraServiceNames.length
+          ? `Additional services: ${extraServiceNames.join(', ')}`
+          : '';
+        const nextNotes = [strippedNotes, extraLine].filter(Boolean).join('\n');
+
+        await appt.update({
+          service_id: primaryServiceId,
+          amount: fields.total_amount !== undefined ? Number(fields.total_amount || 0) : appt.amount,
+          notes: nextNotes,
+        }, { transaction: t });
+      }
+    }
+
     if (Array.isArray(req.body.splits)) {
       await PaymentSplit.destroy({ where: { payment_id: payment.id }, transaction: t });
       if (req.body.splits.length) {
