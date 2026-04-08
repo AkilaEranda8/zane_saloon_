@@ -27,6 +27,31 @@ const parseAdditionalServiceNames = (notes = '') => {
     .filter(Boolean);
 };
 
+const normalizeServiceName = (name = '') =>
+  String(name)
+    .toLowerCase()
+    .replace(/rs\.?\s*[\d,]+/gi, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const resolveServiceIdsFromPayment = (payment, services) => {
+  const primaryId = Number(payment?.service_id ?? payment?.service?.id ?? 0);
+  const notes = payment?.appointment?.notes || '';
+  const extraNames = parseAdditionalServiceNames(notes);
+  const matchedExtraIds = extraNames
+    .map((name) => {
+      const raw = String(name || '').trim().toLowerCase();
+      const exact = services.find((s) => String(s.name || '').trim().toLowerCase() === raw);
+      if (exact?.id) return Number(exact.id);
+      const normalized = normalizeServiceName(name);
+      const fuzzy = services.find((s) => normalizeServiceName(s.name) === normalized);
+      return fuzzy?.id ? Number(fuzzy.id) : null;
+    })
+    .filter((id) => Number.isFinite(id) && id > 0);
+  return Array.from(new Set([...(primaryId ? [primaryId] : []), ...matchedExtraIds]));
+};
+
 const getPaymentServiceNames = (payment) => {
   const primary = payment?.service?.name ? [payment.service.name] : [];
   const extras = parseAdditionalServiceNames(payment?.appointment?.notes || '');
@@ -447,31 +472,57 @@ export default function PaymentsPage() {
     setFormErr('');
     try {
       const { data: p } = await api.get(`/payments/${row.id}`);
-      const sid = Number(p.service_id ?? p.service?.id ?? 0);
-      const extraNames = parseAdditionalServiceNames(p.appointment?.notes || '');
-      const extraIds = extraNames
-        .map((name) => services.find((s) => String(s.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase())?.id)
-        .filter(Boolean)
-        .map(Number);
-      const serviceIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
+      let paymentWithAppointment = p;
+      if ((!p?.appointment?.notes || !String(p.appointment.notes).trim()) && p?.appointment_id) {
+        try {
+          const apptRes = await api.get(`/appointments/${p.appointment_id}`);
+          if (apptRes?.data?.id) {
+            paymentWithAppointment = {
+              ...p,
+              appointment: {
+                ...(p.appointment || {}),
+                ...apptRes.data,
+              },
+            };
+          }
+        } catch {
+          // keep payment payload if appointment fetch fails
+        }
+      }
+
+      const serviceIds = resolveServiceIdsFromPayment(paymentWithAppointment, services);
       setForm({
-        branch_id: String(p.branch_id || ''),
-        staff_id: String(p.staff_id || ''),
-        customer_id: String(p.customer_id || ''),
+        branch_id: String(paymentWithAppointment.branch_id || ''),
+        staff_id: String(paymentWithAppointment.staff_id || ''),
+        customer_id: String(paymentWithAppointment.customer_id || ''),
         service_ids: serviceIds.filter((x) => Number.isFinite(x) && x > 0),
-        total_amount: p.total_amount != null ? String(p.total_amount) : '',
-        loyalty_discount: Number(p.loyalty_discount || 0),
-        discount_id: p.discount_id ? String(p.discount_id) : '',
-        splits: (p.splits || []).map((sp) => ({
+        total_amount: paymentWithAppointment.total_amount != null ? String(paymentWithAppointment.total_amount) : '',
+        loyalty_discount: Number(paymentWithAppointment.loyalty_discount || 0),
+        discount_id: paymentWithAppointment.discount_id ? String(paymentWithAppointment.discount_id) : '',
+        splits: (paymentWithAppointment.splits || []).map((sp) => ({
           method: sp.method,
           amount: sp.amount != null ? String(Number(sp.amount)) : '',
           customer_package_id: sp.customer_package_id,
         })),
       });
+      if (paymentWithAppointment.discount_id) {
+        try {
+          const dr = await api.get(`/discounts/${paymentWithAppointment.discount_id}`);
+          const d = dr?.data;
+          if (d?.id) {
+            setDiscounts((prev) => {
+              const arr = Array.isArray(prev) ? prev : [];
+              return arr.some((x) => String(x.id) === String(d.id)) ? arr : [d, ...arr];
+            });
+          }
+        } catch {
+          // ignore; active discounts list effect will still run
+        }
+      }
       setCustPackages([]);
-      if (p.customer_id) {
+      if (paymentWithAppointment.customer_id) {
         setLoadingPkgs(true);
-        api.get(`/packages/customer/${p.customer_id}/active`)
+        api.get(`/packages/customer/${paymentWithAppointment.customer_id}/active`)
           .then((r) => { setCustPackages(Array.isArray(r.data) ? r.data : []); })
           .catch(() => {})
           .finally(() => setLoadingPkgs(false));
