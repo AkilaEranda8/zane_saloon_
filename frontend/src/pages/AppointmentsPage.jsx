@@ -426,16 +426,16 @@ export default function AppointmentsPage() {
     const net = Math.max(0, gross - promo);
     setPaymentAmt(net > 0 ? String(net) : '');
   }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
-  // Appointment discount calculation effect
+  // Appointment discount calculation effect (handles both apply and clear discount).
   useEffect(() => {
-    if (!showForm || !apptDiscountId) return;
+    if (!showForm) return;
     const gross = calcServiceTotal(apptServiceIds);
-    const sel = apptDiscounts.find((d) => String(d.id) === String(apptDiscountId));
-    if (sel) {
-      const promo = computePromoFromDiscount(sel, gross);
-      const net = Math.max(0, gross - promo);
-      setForm(f => ({ ...f, amount: net > 0 ? String(net) : '' }));
-    }
+    const sel = apptDiscountId
+      ? apptDiscounts.find((d) => String(d.id) === String(apptDiscountId))
+      : null;
+    const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
+    const net = Math.max(0, gross - promo);
+    setForm((f) => ({ ...f, amount: net > 0 ? String(net) : '' }));
   }, [showForm, apptDiscountId, apptServiceIds, apptDiscounts]);
 
   const handlePayment = async () => {
@@ -474,6 +474,7 @@ export default function AppointmentsPage() {
         await api.put(`/appointments/${paymentAppt.id}`, {
           service_id: primaryId || paymentAppt.service_id,
           service_ids: paymentServices,
+          discount_id: paymentDiscountId ? Number(paymentDiscountId) : null,
           amount: Number(paymentAmt),
           notes: updatedNotes,
         });

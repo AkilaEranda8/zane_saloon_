@@ -106,7 +106,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
 
     if (!branch_id || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
@@ -121,6 +121,7 @@ const create = async (req, res) => {
 
     const appt = await Appointment.create({
       branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
+      discount_id: discount_id || null,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
@@ -174,7 +175,7 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
-    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status', 'discount_id'];
+    const allowed = ['customer_id', 'staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status', 'discount_id'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
