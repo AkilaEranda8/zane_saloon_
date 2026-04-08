@@ -233,16 +233,8 @@ const update = async (req, res) => {
           where: { id: incomingServiceIds },
           attributes: ['id', 'price'],
         });
-        updates.amount = rows.reduce((sum, s) => sum + Number(s.price || 0), 0);
-      } else if (updates.service_id) {
-        const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
-        if (svc) updates.amount = svc.price;
-      }
-    }
-
-    const prevSnapshot = {
-      customer_id: appt.customer_id,
       staff_id: appt.staff_id,
+        const update = async (req, res) => {
       service_id: appt.service_id,
       date: appt.date,
     };
