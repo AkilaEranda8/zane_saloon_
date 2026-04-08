@@ -10,6 +10,7 @@ import 'commission_page.dart';
 import 'customers_page.dart';
 import 'dashboard_page.dart';
 import 'edit_item_page.dart';
+import 'expenses_page.dart';
 import 'login_page.dart';
 import 'payments_page.dart';
 import 'permissions_page.dart';
@@ -116,6 +117,19 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PaymentsPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
+            title: 'Expenses',
+            subtitle: 'Track and add expenses (superadmin add only)',
+            icon: Icons.receipt_long_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpensesPage()),
               );
             },
           ),

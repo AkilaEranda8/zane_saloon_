@@ -618,6 +618,72 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<ExpenseListResult?> loadExpenses({
+    String? branchId,
+    int page = 1,
+    int limit = 50,
+    String? month,
+    String? category,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot load expenses).';
+      return null;
+    }
+    try {
+      _lastError = null;
+      final effectiveBranch = (branchId ?? _currentUser?.branchId ?? '').trim();
+      return await _api.fetchExpenses(
+        token: token,
+        branchId: effectiveBranch.isEmpty ? null : effectiveBranch,
+        page: page,
+        limit: limit,
+        month: month,
+        category: category,
+      );
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return null;
+    }
+  }
+
+  Future<bool> addExpense({
+    required String branchId,
+    required String category,
+    required String title,
+    required String amount,
+    required String date,
+    String? paidTo,
+    String? paymentMethod,
+    String? receiptNumber,
+    String? notes,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot add expense).';
+      return false;
+    }
+    try {
+      await _api.createExpense(
+        token: token,
+        branchId: branchId,
+        category: category,
+        title: title,
+        amount: amount,
+        date: date,
+        paidTo: paidTo,
+        paymentMethod: paymentMethod,
+        receiptNumber: receiptNumber,
+        notes: notes,
+      );
+      _lastError = null;
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Future<List<WalkInEntry>> loadWalkIns({
     required String branchId,
     String? date,

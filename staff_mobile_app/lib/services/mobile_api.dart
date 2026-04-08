@@ -25,6 +25,18 @@ class AppointmentListResult {
   final List<Appointment> data;
 }
 
+class ExpenseListResult {
+  ExpenseListResult({
+    required this.total,
+    required this.totalAmount,
+    required this.data,
+  });
+
+  final int total;
+  final double totalAmount;
+  final List<Map<String, dynamic>> data;
+}
+
 class MyCommissionResult {
   MyCommissionResult({
     required this.total,
@@ -487,6 +499,72 @@ class MobileApi {
         .whereType<Map>()
         .map((row) => PaymentRecord.fromJson(Map<String, dynamic>.from(row)))
         .toList();
+  }
+
+  Future<ExpenseListResult> fetchExpenses({
+    required String token,
+    String? branchId,
+    int page = 1,
+    int limit = 50,
+    String? month,
+    String? category,
+  }) async {
+    final qp = <String, String>{
+      'page': '$page',
+      'limit': '$limit',
+      if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      if (month != null && month.isNotEmpty) 'month': month,
+      if (category != null && category.isNotEmpty) 'category': category,
+    };
+    final uri = Uri.parse('$baseUrl/api/expenses').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Expenses load failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    final rows = list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    return ExpenseListResult(
+      total: int.tryParse('${body['total'] ?? rows.length}') ?? rows.length,
+      totalAmount: double.tryParse('${body['totalAmount'] ?? 0}') ?? 0,
+      data: rows,
+    );
+  }
+
+  Future<void> createExpense({
+    required String token,
+    required String branchId,
+    required String category,
+    required String title,
+    required String amount,
+    required String date,
+    String? paidTo,
+    String? paymentMethod,
+    String? receiptNumber,
+    String? notes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/expenses'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'category': category.trim(),
+        'title': title.trim(),
+        'amount': double.tryParse(amount.trim()) ?? amount.trim(),
+        'date': date.trim(),
+        if (paidTo != null && paidTo.trim().isNotEmpty) 'paid_to': paidTo.trim(),
+        if (paymentMethod != null && paymentMethod.trim().isNotEmpty) 'payment_method': paymentMethod.trim(),
+        if (receiptNumber != null && receiptNumber.trim().isNotEmpty) 'receipt_number': receiptNumber.trim(),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Expense create failed');
+    }
   }
 
   Future<void> createManualPayment({

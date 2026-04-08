@@ -11,6 +11,7 @@ import 'appointments_page.dart';
 import 'calendar_page.dart';
 import 'commission_page.dart';
 import 'customers_page.dart';
+import 'expenses_page.dart';
 import 'login_page.dart';
 import 'notifications_page.dart';
 import 'payments_page.dart';
@@ -229,6 +230,9 @@ class _DashboardPageState extends State<DashboardPage>
       _NavData('Payments', Icons.payments_rounded,
           [const Color(0xFF0369A1), const Color(0xFF06B6D4)],
           const PaymentsPage()),
+        _NavData('Expenses', Icons.receipt_long_rounded,
+          [const Color(0xFF0F766E), const Color(0xFF14B8A6)],
+          const ExpensesPage()),
       _NavData('Calendar', Icons.calendar_today_rounded,
           [const Color(0xFF9D174D), const Color(0xFFEC4899)],
           const CalendarPage()),
