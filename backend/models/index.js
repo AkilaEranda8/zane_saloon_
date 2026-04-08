@@ -79,7 +79,9 @@ Payment.belongsTo(Staff,       { foreignKey: 'staff_id',       as: 'staff' });
 Payment.belongsTo(Customer,    { foreignKey: 'customer_id',    as: 'customer' });
 Payment.belongsTo(Service,     { foreignKey: 'service_id',     as: 'service' });
 Payment.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment' });
+Payment.belongsTo(Discount,    { foreignKey: 'discount_id',    as: 'discount' });
 Payment.hasMany(PaymentSplit,  { foreignKey: 'payment_id',     as: 'splits' });
+Discount.hasMany(Payment,      { foreignKey: 'discount_id',    as: 'payments' });
 
 // ── PaymentSplit ──────────────────────────────────────────────────────────────
 PaymentSplit.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });

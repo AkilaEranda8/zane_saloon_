@@ -1,7 +1,8 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption, Discount } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
+const { computePromoAmount, isDiscountActive } = require('../services/discountHelpers');
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -34,6 +35,7 @@ const list = async (req, res) => {
         { model: Staff,    as: 'staff',    attributes: ['id', 'name'] },
         { model: Customer, as: 'customer', attributes: ['id', 'name'] },
         { model: Service,  as: 'service',  attributes: ['id', 'name'] },
+        { model: Discount, as: 'discount', attributes: ['id', 'name', 'discount_type', 'value'] },
         { model: PaymentSplit, as: 'splits' },
       ],
     });
@@ -53,6 +55,7 @@ const getOne = async (req, res) => {
         { model: Staff,       as: 'staff'       },
         { model: Customer,    as: 'customer'    },
         { model: Service,     as: 'service'     },
+        { model: Discount,    as: 'discount'    },
         { model: Appointment, as: 'appointment' },
         { model: PaymentSplit, as: 'splits'     },
       ],
@@ -70,7 +73,7 @@ const create = async (req, res) => {
   try {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, phone, walkin_token, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
+      customer_name, phone, walkin_token, splits = [], loyalty_discount = 0, promo_discount = 0, discount_id = null, usePoints = false,
     } = req.body;
 
     if (!branch_id) {
@@ -85,6 +88,21 @@ const create = async (req, res) => {
 
     const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
     const points_earned = 5;
+
+    let savedDiscountId = discount_id || null;
+    let savedPromoDiscount = parseFloat(promo_discount || 0);
+    if (savedDiscountId && savedPromoDiscount <= 0) {
+      const discount = await Discount.findByPk(savedDiscountId, { transaction: t });
+      if (discount && isDiscountActive(discount, branch_id)) {
+        const gross = Math.max(
+          parseFloat(req.body.total_amount || 0),
+          total_amount + parseFloat(loyalty_discount || 0)
+        );
+        savedPromoDiscount = computePromoAmount(discount, gross);
+      } else if (!discount) {
+        savedDiscountId = null;
+      }
+    }
 
     // Fetch staff to calculate commission
     let commission_amount = 0;
@@ -107,7 +125,7 @@ const create = async (req, res) => {
       customer_id:    customer_id    || null,
       service_id:     service_id     || null,
       appointment_id: appointment_id || null,
-      customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
+      customer_name, total_amount, loyalty_discount, promo_discount: savedPromoDiscount, discount_id: savedDiscountId, points_earned,
       commission_amount, date: today, status: 'paid',
     }, { transaction: t });
 
@@ -221,15 +239,81 @@ const create = async (req, res) => {
 };
 
 const update = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const payment = await Payment.findByPk(req.params.id);
-    if (!payment) return res.status(404).json({ message: 'Payment not found.' });
-    const allowed = ['status', 'note', 'date', 'total_amount', 'method'];
-    const fields  = {};
-    for (const k of allowed) { if (req.body[k] !== undefined) fields[k] = req.body[k]; }
-    await payment.update(fields);
-    return res.json(payment);
+    const payment = await Payment.findByPk(req.params.id, { transaction: t });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Payment not found.' });
+    }
+
+    const allowed = [
+      'branch_id', 'staff_id', 'customer_id', 'service_id', 'appointment_id',
+      'customer_name', 'status', 'note', 'date', 'total_amount',
+      'loyalty_discount', 'promo_discount', 'discount_id',
+    ];
+    const fields = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) fields[k] = req.body[k];
+    }
+
+    if (req.body.service_ids !== undefined && !fields.service_id) {
+      const ids = Array.isArray(req.body.service_ids) ? req.body.service_ids : [];
+      fields.service_id = ids.length ? Number(ids[0]) : null;
+    }
+
+    const branchIdForDiscount = Number(fields.branch_id || payment.branch_id);
+    let savedDiscountId = fields.discount_id !== undefined ? (fields.discount_id || null) : payment.discount_id;
+    let savedPromoDiscount = fields.promo_discount !== undefined
+      ? parseFloat(fields.promo_discount || 0)
+      : parseFloat(payment.promo_discount || 0);
+
+    if (savedDiscountId && savedPromoDiscount <= 0) {
+      const discount = await Discount.findByPk(savedDiscountId, { transaction: t });
+      if (discount && isDiscountActive(discount, branchIdForDiscount)) {
+        const gross = parseFloat(fields.total_amount || payment.total_amount || 0)
+          + parseFloat(fields.loyalty_discount || payment.loyalty_discount || 0);
+        savedPromoDiscount = computePromoAmount(discount, gross);
+      } else {
+        savedDiscountId = null;
+        savedPromoDiscount = 0;
+      }
+    }
+
+    fields.discount_id = savedDiscountId;
+    fields.promo_discount = savedPromoDiscount;
+
+    await payment.update(fields, { transaction: t });
+
+    if (Array.isArray(req.body.splits)) {
+      await PaymentSplit.destroy({ where: { payment_id: payment.id }, transaction: t });
+      if (req.body.splits.length) {
+        const splitRows = req.body.splits.map((s) => ({
+          payment_id: payment.id,
+          method: s.method,
+          amount: s.amount,
+          customer_package_id: s.customer_package_id || null,
+        }));
+        await PaymentSplit.bulkCreate(splitRows, { transaction: t });
+      }
+    }
+
+    await t.commit();
+
+    const updated = await Payment.findByPk(payment.id, {
+      include: [
+        { model: Branch,   as: 'branch',   attributes: ['id', 'name'] },
+        { model: Staff,    as: 'staff',    attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name'] },
+        { model: Service,  as: 'service',  attributes: ['id', 'name'] },
+        { model: Discount, as: 'discount', attributes: ['id', 'name', 'discount_type', 'value'] },
+        { model: PaymentSplit, as: 'splits' },
+      ],
+    });
+
+    return res.json(updated);
   } catch (err) {
+    await t.rollback();
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
   }
