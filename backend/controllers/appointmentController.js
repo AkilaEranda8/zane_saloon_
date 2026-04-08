@@ -177,10 +177,27 @@ const update = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    // Auto-update amount from service price when service changes
-    if (updates.service_id) {
-      const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
-      if (svc) updates.amount = svc.price;
+    const incomingServiceIds = Array.isArray(req.body.service_ids)
+      ? req.body.service_ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+    if (incomingServiceIds.length > 0 && req.body.service_id === undefined) {
+      updates.service_id = incomingServiceIds[0];
+    }
+
+    // Auto-update amount from service price only when amount is not explicitly provided.
+    if (updates.amount === undefined) {
+      if (incomingServiceIds.length > 0) {
+        const rows = await Service.findAll({
+          where: { id: incomingServiceIds },
+          attributes: ['id', 'price'],
+        });
+        updates.amount = rows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+      } else if (updates.service_id) {
+        const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
+        if (svc) updates.amount = svc.price;
+      }
     }
 
     const prevStaffId = appt.staff_id;

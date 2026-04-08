@@ -283,6 +283,27 @@ const update = async (req, res) => {
     fields.discount_id = savedDiscountId;
     fields.promo_discount = savedPromoDiscount;
 
+    const commissionInputsChanged =
+      fields.staff_id !== undefined ||
+      fields.total_amount !== undefined ||
+      fields.loyalty_discount !== undefined;
+    if (commissionInputsChanged) {
+      const staffIdForCommission = fields.staff_id !== undefined ? fields.staff_id : payment.staff_id;
+      const totalForCommission = Number(fields.total_amount !== undefined ? fields.total_amount : payment.total_amount || 0);
+      const loyaltyForCommission = Number(fields.loyalty_discount !== undefined ? fields.loyalty_discount : payment.loyalty_discount || 0);
+      let commissionAmount = 0;
+      if (staffIdForCommission) {
+        const staffMember = await Staff.findByPk(staffIdForCommission, { transaction: t });
+        if (staffMember) {
+          const commissionBase = Math.max(0, totalForCommission - loyaltyForCommission);
+          commissionAmount = staffMember.commission_type === 'percentage'
+            ? (commissionBase * parseFloat(staffMember.commission_value || 0)) / 100
+            : parseFloat(staffMember.commission_value || 0);
+        }
+      }
+      fields.commission_amount = commissionAmount;
+    }
+
     await payment.update(fields, { transaction: t });
 
     if (Array.isArray(req.body.splits)) {
