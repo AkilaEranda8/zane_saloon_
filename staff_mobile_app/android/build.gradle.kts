@@ -12,8 +12,13 @@ val newBuildDir: Directory =
 rootProject.layout.buildDirectory.value(newBuildDir)
 
 subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
+    // Keep external plugin projects (for example from pub cache on another drive)
+    // on their default build directory to avoid cross-drive path root issues on Windows.
+    val isLocalProject = project.projectDir.toPath().startsWith(rootDir.toPath())
+    if (isLocalProject) {
+        val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
+        project.layout.buildDirectory.value(newSubprojectBuildDir)
+    }
 }
 subprojects {
     project.evaluationDependsOn(":app")
