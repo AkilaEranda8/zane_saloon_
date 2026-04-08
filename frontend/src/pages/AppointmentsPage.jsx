@@ -55,6 +55,13 @@ const getAllServiceNamesForAppt = (row) => {
   const extra = parseAdditionalServiceNames(row.notes || '');
   return Array.from(new Set([primary, ...extra].filter(Boolean)));
 };
+const getAppointmentGrossTotal = (row, services) => {
+  const ids = getInitialPaymentServiceIds(row, services);
+  return ids.reduce((sum, id) => {
+    const svc = services.find((s) => Number(s.id) === Number(id));
+    return sum + Number(svc?.price || 0);
+  }, 0);
+};
 const inferExtraServiceIdsFromAmount = ({ primaryId, totalAmount, services }) => {
   const target = Number(totalAmount || 0);
   if (!target || target <= 0) return [];
@@ -977,6 +984,20 @@ export default function AppointmentsPage() {
                   </FormGroup>
                 )}
               </div>
+              <div style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:10, padding:'12px 14px', display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#1D4ED8' }}>
+                  <span>Gross total</span>
+                  <strong>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#1D4ED8' }}>
+                  <span>Discount</span>
+                  <strong>{paymentDiscountId ? `${paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))?.name || 'Applied discount'}` : 'None'}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#1D4ED8' }}>
+                  <span>Net to collect</span>
+                  <strong>Rs. {Number(paymentAmt || 0).toLocaleString()}</strong>
+                </div>
+              </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 <FormGroup label="Paid (Rs.)" required>
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
@@ -1016,6 +1037,8 @@ export default function AppointmentsPage() {
             {(() => {
               const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
               const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+              const grossTotal = getAppointmentGrossTotal(detailItem, services);
+              const promoAmount = detailItem.discount ? computePromoFromDiscount(detailItem.discount, grossTotal) : 0;
               return (
                 <>
                   {[
@@ -1025,7 +1048,8 @@ export default function AppointmentsPage() {
                     { icon:'', label:'Time',    value:detailItem.time||'' },
                     { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
                     { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
-                  ].map(({icon,label,value,highlight})=>(
+                    detailItem.discount ? { icon:'', label:'Discount', value:`${detailItem.discount.name}${promoAmount > 0 ? ` (-Rs. ${promoAmount.toLocaleString()})` : ''}` } : null,
+                  ].filter(Boolean).map(({icon,label,value,highlight})=>(
                     <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
                       <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
                       <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
