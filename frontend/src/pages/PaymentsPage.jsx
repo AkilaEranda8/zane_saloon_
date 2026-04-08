@@ -491,12 +491,16 @@ export default function PaymentsPage() {
       }
 
       const serviceIds = resolveServiceIdsFromPayment(paymentWithAppointment, services);
+      const grossTotal = serviceIds.reduce((sum, id) => {
+        const svc = services.find((s) => Number(s.id) === Number(id));
+        return sum + Number(svc?.price || 0);
+      }, 0);
       setForm({
         branch_id: String(paymentWithAppointment.branch_id || ''),
         staff_id: String(paymentWithAppointment.staff_id || ''),
         customer_id: String(paymentWithAppointment.customer_id || ''),
         service_ids: serviceIds.filter((x) => Number.isFinite(x) && x > 0),
-        total_amount: paymentWithAppointment.total_amount != null ? String(paymentWithAppointment.total_amount) : '',
+        total_amount: grossTotal > 0 ? String(grossTotal) : (paymentWithAppointment.total_amount != null ? String(paymentWithAppointment.total_amount) : ''),
         loyalty_discount: Number(paymentWithAppointment.loyalty_discount || 0),
         discount_id: paymentWithAppointment.discount_id ? String(paymentWithAppointment.discount_id) : '',
         splits: (paymentWithAppointment.splits || []).map((sp) => ({
@@ -564,6 +568,7 @@ export default function PaymentsPage() {
         ...rest,
         service_id: service_ids[0] || null,
         service_ids,
+        total_amount: net,
         subtotal,
         promo_discount: promo,
         discount_id: form.discount_id || null,
