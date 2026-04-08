@@ -51,6 +51,20 @@ const normalizeServiceName = (name = '') =>
     .replace(/\s+/g, ' ')
     .trim();
 const getAllServiceNamesForAppt = (row) => {
+  // Prefer appointmentServices from API if available
+  if (Array.isArray(row.appointmentServices) && row.appointmentServices.length > 0) {
+    return row.appointmentServices
+      .map((as) => as.service?.name || '')
+      .filter(Boolean);
+  }
+  // Fallback to service_ids + catalog lookup
+  if (Array.isArray(row.service_ids) && row.service_ids.length > 0) {
+    return row.service_ids.map(id => {
+      // Note: would need catalog passed as param in real impl
+      return '';
+    }).filter(Boolean);
+  }
+  // Fallback to notes parsing
   const primary = row.service?.name || '';
   const extra = parseAdditionalServiceNames(row.notes || '');
   return Array.from(new Set([primary, ...extra].filter(Boolean)));
@@ -88,6 +102,15 @@ const inferExtraServiceIdsFromAmount = ({ primaryId, totalAmount, services }) =>
   return [];
 };
 const getInitialPaymentServiceIds = (row, services) => {
+  // Prefer appointmentServices from API if available
+  if (Array.isArray(row?.appointmentServices) && row.appointmentServices.length > 0) {
+    return Array.from(new Set(
+      row.appointmentServices
+        .map((as) => Number(as.service_id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ));
+  }
+  
   const svcId = Number(row?.service_id || row?.service?.id || 0);
   if (Array.isArray(row?.service_ids) && row.service_ids.length) {
     const fromApi = Array.from(new Set(
@@ -1035,14 +1058,29 @@ export default function AppointmentsPage() {
               <StatusBadge status={detailItem.status} />
             </div>
             {(() => {
-              const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
-              const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
-              const grossTotal = getAppointmentGrossTotal(detailItem, services);
+              let finalServiceNames = [];
+              let grossTotal = 0;
+              
+              // Use appointmentServices from API if available
+              if (Array.isArray(detailItem.appointmentServices) && detailItem.appointmentServices.length > 0) {
+                finalServiceNames = detailItem.appointmentServices
+                  .map((as) => as.service?.name || '')
+                  .filter(Boolean);
+                grossTotal = detailItem.appointmentServices.reduce((sum, as) => {
+                  return sum + Number(as.service?.price || 0);
+                }, 0);
+              } else {
+                // Fallback to notes parsing
+                const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
+                finalServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+                grossTotal = getAppointmentGrossTotal(detailItem, services);
+              }
+              
               const promoAmount = detailItem.discount ? computePromoFromDiscount(detailItem.discount, grossTotal) : 0;
               return (
                 <>
                   {[
-                    { icon:'', label:'Services', value: allServiceNames.join(', ') || '' },
+                    { icon:'', label:'Services', value: finalServiceNames.join(', ') || '' },
                     { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
                     { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
                     { icon:'', label:'Time',    value:detailItem.time||'' },

@@ -5,6 +5,13 @@ class AppointmentNotes {
   static const String extraServicesPrefix = 'Additional services:';
   static const String packagePrefix       = 'Package:';
 
+  static String _cleanServiceName(String value) {
+    var out = value.trim();
+    out = out.replaceAll(RegExp(r'[\s\u00A0]+'), ' ');
+    out = out.replaceAll(RegExp(r'[.;:]+$'), '');
+    return out.trim();
+  }
+
   static String stripAdditionalServicesLine(String notes) {
     return notes
         .split('\n')
@@ -27,7 +34,7 @@ class AppointmentNotes {
         return line
             .replaceFirst(extraServicesPrefix, '')
             .split(',')
-            .map((s) => s.trim())
+            .map(_cleanServiceName)
             .where((s) => s.isNotEmpty)
             .toList();
       }

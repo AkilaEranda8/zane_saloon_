@@ -7,6 +7,7 @@ const Service = require('../models/Service');
 const Staff = require('../models/Staff');
 const { staffWhereForBranch } = require('../utils/staffBranchFilter');
 const Appointment = require('../models/Appointment');
+const AppointmentService = require('../models/AppointmentService');
 const Customer = require('../models/Customer');
 const Package = require('../models/Package');
 const CustomerPackage = require('../models/CustomerPackage');
@@ -579,6 +580,7 @@ router.post('/bookings', async (req, res) => {
       }
 
       const created = [];
+      let sortOrder = 0;
       for (const r of requestedRanges) {
         const appointment = await Appointment.create({
           branch_id: effectiveBranchId,
@@ -593,6 +595,14 @@ router.post('/bookings', async (req, res) => {
           status: 'pending',
           notes: notes ? notes.trim() : null,
         }, { transaction: tx });
+        
+        // Create AppointmentService record for this service
+        await AppointmentService.create({
+          appointment_id: appointment.id,
+          service_id: r.service.id,
+          sort_order: sortOrder++,
+        }, { transaction: tx });
+        
         created.push(appointment);
       }
       await tx.commit();

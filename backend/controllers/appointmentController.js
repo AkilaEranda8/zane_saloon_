@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service, Payment } = require('../models');
+const { Appointment, AppointmentService, Branch, Customer, Staff, Service, Payment } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
@@ -95,6 +95,12 @@ const getOne = async (req, res) => {
         { model: Staff,    as: 'staff'    },
         { model: Service,  as: 'service'  },
         { model: require('../models').Discount, as: 'discount' },
+        {
+          model: AppointmentService,
+          as: 'appointmentServices',
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'price', 'duration_minutes'] }],
+          attributes: ['id', 'service_id', 'sort_order'],
+        },
       ],
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
@@ -106,17 +112,22 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, service_ids, customer_name, phone, date, time, amount, notes, discount_id, is_recurring, recurrence_frequency } = req.body;
 
     if (!branch_id || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
+    const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0 ? service_ids : [service_id];
+    
     // Auto-fetch service price if amount not provided
     let finalAmount = amount;
-    if (!finalAmount && service_id) {
-      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
-      if (svc) finalAmount = svc.price;
+    if (!finalAmount && selectedServiceIds.length > 0) {
+      const svcs = await Service.findAll({
+        where: { id: selectedServiceIds },
+        attributes: ['id', 'price'],
+      });
+      finalAmount = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
     }
 
     const appt = await Appointment.create({
@@ -125,6 +136,16 @@ const create = async (req, res) => {
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
+
+    // Create AppointmentService records for all selected services
+    if (selectedServiceIds.length > 0) {
+      const appointmentServices = selectedServiceIds.map((id, idx) => ({
+        appointment_id: appt.id,
+        service_id: id,
+        sort_order: idx,
+      }));
+      await AppointmentService.bulkCreate(appointmentServices);
+    }
 
     // Fire-and-forget notification — use request phone or fall back to customer record
     const notifyPhone = phone || (customer_id
@@ -188,6 +209,17 @@ const update = async (req, res) => {
       : [];
     if (incomingServiceIds.length > 0 && req.body.service_id === undefined) {
       updates.service_id = incomingServiceIds[0];
+    }
+
+    // If service_ids provided, update AppointmentService records
+    if (incomingServiceIds.length > 0) {
+      await AppointmentService.destroy({ where: { appointment_id: appt.id } });
+      const appointmentServices = incomingServiceIds.map((id, idx) => ({
+        appointment_id: appt.id,
+        service_id: id,
+        sort_order: idx,
+      }));
+      await AppointmentService.bulkCreate(appointmentServices);
     }
 
     // Auto-update amount from service price only when amount is not explicitly provided.

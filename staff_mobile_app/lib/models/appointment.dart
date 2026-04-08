@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../utils/appointment_notes.dart';
 import 'salon_service.dart';
 
@@ -74,6 +76,57 @@ class Appointment {
   }
 
   factory Appointment.fromJson(Map<String, dynamic> json) {
+    void addUnique(List<String> out, String? raw) {
+      final value = (raw ?? '').trim();
+      if (value.isEmpty || value == 'null' || out.contains(value)) return;
+      out.add(value);
+    }
+
+    List<String> parseServiceIds(dynamic raw) {
+      final ids = <String>[];
+
+      void walk(dynamic node) {
+        if (node == null) return;
+        if (node is List) {
+          for (final item in node) {
+            walk(item);
+          }
+          return;
+        }
+        if (node is Map) {
+          final map = Map<String, dynamic>.from(node);
+          if (map.containsKey('service_id')) {
+            addUnique(ids, '${map['service_id']}');
+          } else if (map.containsKey('serviceId')) {
+            addUnique(ids, '${map['serviceId']}');
+          } else if (map.containsKey('id')) {
+            addUnique(ids, '${map['id']}');
+          } else if (map.containsKey('service')) {
+            walk(map['service']);
+          }
+          return;
+        }
+        if (node is String) {
+          final text = node.trim();
+          if (text.isEmpty || text == 'null') return;
+          if (text.startsWith('[') || text.startsWith('{')) {
+            try {
+              walk(jsonDecode(text));
+              return;
+            } catch (_) {}
+          }
+          for (final part in text.split(',')) {
+            addUnique(ids, part);
+          }
+          return;
+        }
+        addUnique(ids, '$node');
+      }
+
+      walk(raw);
+      return ids;
+    }
+
     final service = json['service'];
     final staff = json['staff'];
     final customer = json['customer'];
@@ -82,13 +135,20 @@ class Appointment {
     final amt = rawAmount is num
         ? rawAmount.toDouble()
         : double.tryParse('$rawAmount') ?? 0;
-    final rawIds = json['service_ids'];
     final parsedIds = <String>[];
-    if (rawIds is List) {
-      for (final e in rawIds) {
-        final s = '$e'.trim();
-        if (s.isNotEmpty && s != 'null') parsedIds.add(s);
+    for (final key in const [
+      'service_ids',
+      'serviceIds',
+      'appointment_services',
+      'appointmentServices',
+    ]) {
+      for (final id in parseServiceIds(json[key])) {
+        addUnique(parsedIds, id);
       }
+    }
+    final primaryId = '${json['service_id'] ?? service?['id'] ?? ''}'.trim();
+    if (primaryId.isNotEmpty && primaryId != 'null' && !parsedIds.contains(primaryId)) {
+      parsedIds.insert(0, primaryId);
     }
     return Appointment(
       id: '${json['id']}',
@@ -98,7 +158,7 @@ class Appointment {
       time: '${json['time'] ?? ''}',
       status: '${json['status'] ?? 'pending'}',
       createdBy: '${staff is Map ? staff['name'] ?? '' : ''}',
-      serviceId: '${json['service_id'] ?? service?['id'] ?? ''}',
+      serviceId: primaryId,
       serviceIds: parsedIds,
       branchId: '${json['branch_id'] ?? (branch is Map ? branch['id'] ?? '' : '')}',
       phone: '${json['phone'] ?? (customer is Map ? customer['phone'] ?? '' : '')}',

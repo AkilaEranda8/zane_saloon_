@@ -369,23 +369,83 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (!mounted) return;
     final svcs = app.services;
 
-    final ids = <int>[];
-    if (a.serviceIds.isNotEmpty) {
-      for (final raw in a.serviceIds) {
-        final v = int.tryParse(raw);
-        if (v != null && !ids.contains(v)) ids.add(v);
-      }
-    } else {
-      final sid = int.tryParse(a.serviceId);
-      if (sid != null) ids.add(sid);
-      for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
-        for (final s in svcs) {
-          if (s.name == name) {
-            final id = int.tryParse(s.id);
-            if (id != null && !ids.contains(id)) ids.add(id);
-          }
+    final ids = <String>[];
+    void addId(String raw) {
+      final v = raw.trim();
+      if (v.isEmpty || v == 'null' || ids.contains(v)) return;
+      ids.add(v);
+    }
+
+    String normName(String raw) {
+      var out = raw.toLowerCase().trim();
+      out = out.replaceAll(RegExp(r'\(vip\)'), ' ');
+      out = out.replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+      out = out.replaceAll(RegExp(r'\s+'), ' ');
+      return out.trim();
+    }
+
+    String? findServiceIdByName(String noteName) {
+      final needle = normName(noteName);
+      if (needle.isEmpty) return null;
+      final needleWords = needle.split(RegExp(r'\s+'));
+
+      List<(String id, String origName)> exactMatches = [];
+      for (final s in svcs) {
+        final cand = normName(s.name);
+        if (cand == needle) {
+          exactMatches.add((s.id, s.name));
         }
       }
+      if (exactMatches.isNotEmpty) {
+        exactMatches.sort((a, b) => a.origName.length.compareTo(b.origName.length));
+        return exactMatches.first.id;
+      }
+
+      List<(String id, String origName)> substringMatches = [];
+      for (final s in svcs) {
+        final cand = normName(s.name);
+        if (cand.contains(needle) || needle.contains(cand)) {
+          substringMatches.add((s.id, s.name));
+        }
+      }
+      if (substringMatches.isNotEmpty) {
+        substringMatches.sort((a, b) => a.origName.length.compareTo(b.origName.length));
+        return substringMatches.first.id;
+      }
+
+      List<(String id, String origName, int score)> wordMatches = [];
+      for (final s in svcs) {
+        final cand = normName(s.name);
+        final candWords = cand.split(RegExp(r'\s+'));
+        final matchCount = needleWords
+            .where((w) => candWords.any((cw) => cw.contains(w) || w.contains(cw)))
+            .length;
+        if (matchCount >= (needleWords.length > 0 ? (needleWords.length / 2).ceil() : 0)) {
+          wordMatches.add((s.id, s.name, matchCount));
+        }
+      }
+      if (wordMatches.isNotEmpty) {
+        wordMatches.sort((a, b) {
+          final cmp = b.score.compareTo(a.score);
+          if (cmp != 0) return cmp;
+          return a.origName.length.compareTo(b.origName.length);
+        });
+        return wordMatches.first.id;
+      }
+      return null;
+    }
+
+    if (a.serviceIds.isNotEmpty) {
+      for (final raw in a.serviceIds) {
+        addId(raw);
+      }
+    }
+    if (ids.isEmpty) {
+      addId(a.serviceId);
+    }
+    for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
+      final sid = findServiceIdByName(name);
+      if (sid != null) addId(sid);
     }
     final initialAmt = a.displayAmount > 0 ? a.displayAmount.toStringAsFixed(0) : '';
 
@@ -1634,7 +1694,7 @@ class _PaySheet extends StatefulWidget {
   });
   final Appointment appointment;
   final List<SalonService> services;
-  final List<int> preSelected;
+  final List<String> preSelected;
   final String initialAmount;
   final List<Map<String, dynamic>> discounts;
 
@@ -1671,7 +1731,10 @@ class _PaySheetState extends State<_PaySheet> {
   @override
   void initState() {
     super.initState();
-    final preStrs = widget.preSelected.map((e) => e.toString()).toList();
+    final preStrs = widget.preSelected
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     _primaryServiceId = preStrs.isNotEmpty ? preStrs.first : null;
     if (preStrs.length > 1) _extraServiceIds.addAll(preStrs.sublist(1));
     final gross = _grossFromSelection();
@@ -1808,7 +1871,7 @@ class _PaySheetState extends State<_PaySheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final activeServices = widget.services.where((s) => s.isActive).toList();
+    final activeServices = List<SalonService>.from(widget.services);
     final name = widget.appointment.customerName;
     final initials = name.trim().isNotEmpty
         ? name.trim().split(' ').map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').take(2).join()
