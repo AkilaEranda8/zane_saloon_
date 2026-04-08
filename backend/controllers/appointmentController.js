@@ -203,6 +203,12 @@ const update = async (req, res) => {
       }
     }
 
+    const prevSnapshot = {
+      customer_id: appt.customer_id,
+      staff_id: appt.staff_id,
+      service_id: appt.service_id,
+      date: appt.date,
+    };
     const prevStaffId = appt.staff_id;
     const primaryServiceId = updates.service_id || appt.service_id;
     await appt.update(updates);
@@ -231,9 +237,42 @@ const update = async (req, res) => {
     }
 
     if (Object.keys(paymentUpdates).length > 0) {
-      const linkedPayments = await Payment.findAll({ where: { appointment_id: appt.id } });
+      let linkedPayments = await Payment.findAll({ where: { appointment_id: appt.id } });
+
+      // Backward compatibility: older records may not have appointment_id set.
+      // Try a safe fallback match and link it to this appointment if exactly one match exists.
+      if (!linkedPayments.length) {
+        const dateCandidates = Array.from(new Set([prevSnapshot.date, appt.date].filter(Boolean)));
+        const staffCandidates = Array.from(new Set([prevSnapshot.staff_id, appt.staff_id].filter((v) => v != null && v !== '')));
+        const serviceCandidates = Array.from(new Set([prevSnapshot.service_id, primaryServiceId].filter((v) => v != null && v !== '')));
+        const fallbackWhere = {
+          appointment_id: null,
+          branch_id: appt.branch_id,
+          status: 'paid',
+        };
+        if (appt.customer_id || prevSnapshot.customer_id) {
+          fallbackWhere.customer_id = appt.customer_id || prevSnapshot.customer_id;
+        }
+        if (dateCandidates.length === 1) fallbackWhere.date = dateCandidates[0];
+        else if (dateCandidates.length > 1) fallbackWhere.date = { [Op.in]: dateCandidates };
+        if (staffCandidates.length === 1) fallbackWhere.staff_id = staffCandidates[0];
+        else if (staffCandidates.length > 1) fallbackWhere.staff_id = { [Op.in]: staffCandidates };
+        if (serviceCandidates.length === 1) fallbackWhere.service_id = serviceCandidates[0];
+        else if (serviceCandidates.length > 1) fallbackWhere.service_id = { [Op.in]: serviceCandidates };
+
+        const fallbackMatches = await Payment.findAll({
+          where: fallbackWhere,
+          order: [['createdAt', 'DESC']],
+          limit: 2,
+        });
+        if (fallbackMatches.length === 1) {
+          linkedPayments = fallbackMatches;
+        }
+      }
+
       for (const p of linkedPayments) {
         const nextFields = { ...paymentUpdates };
+        if (!p.appointment_id) nextFields.appointment_id = appt.id;
         const nextStaffId = nextFields.staff_id !== undefined ? nextFields.staff_id : p.staff_id;
         const nextTotal = nextFields.total_amount !== undefined ? Number(nextFields.total_amount || 0) : Number(p.total_amount || 0);
         const nextLoyalty = Number(p.loyalty_discount || 0);
