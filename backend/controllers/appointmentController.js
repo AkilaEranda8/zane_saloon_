@@ -118,7 +118,14 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
-    const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0 ? service_ids : [service_id];
+    const normalizedPrimaryServiceId = Number(service_id);
+    const normalizedServiceIds = (Array.isArray(service_ids) ? service_ids : [normalizedPrimaryServiceId])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const selectedServiceIds = Array.from(new Set(normalizedServiceIds));
+    if (!selectedServiceIds.length) {
+      return res.status(400).json({ message: 'At least one valid service is required.' });
+    }
     
     // Auto-fetch service price if amount not provided
     let finalAmount = amount;
@@ -127,25 +134,37 @@ const create = async (req, res) => {
         where: { id: selectedServiceIds },
         attributes: ['id', 'price'],
       });
+      if (svcs.length !== selectedServiceIds.length) {
+        return res.status(400).json({ message: 'One or more selected services are invalid.' });
+      }
       finalAmount = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
     }
 
-    const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
-      discount_id: discount_id || null,
-      is_recurring: is_recurring || false,
-      recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
-    });
+    const appt = await Appointment.sequelize.transaction(async (tx) => {
+      const createdAppt = await Appointment.create({
+        branch_id,
+        customer_id,
+        staff_id,
+        service_id: normalizedPrimaryServiceId,
+        customer_name,
+        phone,
+        date,
+        time,
+        amount: finalAmount,
+        notes,
+        discount_id: discount_id || null,
+        is_recurring: is_recurring || false,
+        recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
+      }, { transaction: tx });
 
-    // Create AppointmentService records for all selected services
-    if (selectedServiceIds.length > 0) {
       const appointmentServices = selectedServiceIds.map((id, idx) => ({
-        appointment_id: appt.id,
+        appointment_id: createdAppt.id,
         service_id: id,
         sort_order: idx,
       }));
-      await AppointmentService.bulkCreate(appointmentServices);
-    }
+      await AppointmentService.bulkCreate(appointmentServices, { transaction: tx });
+      return createdAppt;
+    });
 
     // Fire-and-forget notification — use request phone or fall back to customer record
     const notifyPhone = phone || (customer_id
@@ -158,7 +177,7 @@ const create = async (req, res) => {
     if (notifyPhone) {
       const [branch, service] = await Promise.all([
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+        Service.findByPk(normalizedPrimaryServiceId, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
@@ -182,6 +201,7 @@ const create = async (req, res) => {
 
     return res.status(201).json(appt);
   } catch (err) {
+    console.error('[appointments.create] failed:', err?.message, err?.stack);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
