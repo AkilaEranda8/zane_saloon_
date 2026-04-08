@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service } = require('../models');
+const { Appointment, Branch, Customer, Staff, Service, Payment } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
@@ -204,7 +204,56 @@ const update = async (req, res) => {
     }
 
     const prevStaffId = appt.staff_id;
+    const primaryServiceId = updates.service_id || appt.service_id;
     await appt.update(updates);
+
+    // Keep linked payment records in sync with appointment edits.
+    const paymentUpdates = {};
+    if (updates.staff_id !== undefined) paymentUpdates.staff_id = updates.staff_id || null;
+    if (updates.customer_id !== undefined) paymentUpdates.customer_id = updates.customer_id || null;
+    if (updates.customer_name !== undefined) paymentUpdates.customer_name = updates.customer_name || null;
+    if (updates.date !== undefined) paymentUpdates.date = updates.date;
+    if (updates.amount !== undefined) paymentUpdates.total_amount = Number(updates.amount || 0);
+    if (updates.discount_id !== undefined) paymentUpdates.discount_id = updates.discount_id || null;
+    if (primaryServiceId !== undefined) paymentUpdates.service_id = primaryServiceId || null;
+
+    // If service selection and total amount are both available, approximate promo discount as gross-net.
+    if (Array.isArray(incomingServiceIds) && incomingServiceIds.length > 0 && updates.amount !== undefined) {
+      const rows = await Service.findAll({
+        where: { id: incomingServiceIds },
+        attributes: ['price'],
+      });
+      const gross = rows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+      const net = Number(updates.amount || 0);
+      paymentUpdates.promo_discount = Math.max(0, gross - net);
+    } else if (updates.discount_id === null || updates.discount_id === '' || updates.discount_id === 0) {
+      paymentUpdates.promo_discount = 0;
+    }
+
+    if (Object.keys(paymentUpdates).length > 0) {
+      const linkedPayments = await Payment.findAll({ where: { appointment_id: appt.id } });
+      for (const p of linkedPayments) {
+        const nextFields = { ...paymentUpdates };
+        const nextStaffId = nextFields.staff_id !== undefined ? nextFields.staff_id : p.staff_id;
+        const nextTotal = nextFields.total_amount !== undefined ? Number(nextFields.total_amount || 0) : Number(p.total_amount || 0);
+        const nextLoyalty = Number(p.loyalty_discount || 0);
+
+        let commissionAmount = Number(p.commission_amount || 0);
+        if (nextStaffId) {
+          const staffMember = await Staff.findByPk(nextStaffId, { attributes: ['commission_type', 'commission_value'] });
+          if (staffMember) {
+            const commissionBase = Math.max(0, nextTotal - nextLoyalty);
+            commissionAmount = staffMember.commission_type === 'percentage'
+              ? (commissionBase * parseFloat(staffMember.commission_value || 0)) / 100
+              : parseFloat(staffMember.commission_value || 0);
+          }
+        } else {
+          commissionAmount = 0;
+        }
+        nextFields.commission_amount = commissionAmount;
+        await p.update(nextFields);
+      }
+    }
 
     // If staff was newly assigned or changed, notify that staff member
     if (updates.staff_id && updates.staff_id !== prevStaffId) {
