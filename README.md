@@ -216,9 +216,12 @@ salon_v1/
 - `GET  /api/public/availability?staffId=&date=` — Booked slots
 - `POST /api/public/bookings` — Create booking
 - `GET  /api/health` — Health check
+- `GET  /api/system` — API modules, version, uptime, environment
+- `GET  /api/system/status` — Runtime status and memory usage
 
 ### Protected (requires JWT)
 - `/api/auth` — Login, logout, current user
+- `GET /api/system/me-permissions` — Current role permissions map
 - `/api/branches` — CRUD branches
 - `/api/services` — CRUD services
 - `/api/staff` — CRUD staff

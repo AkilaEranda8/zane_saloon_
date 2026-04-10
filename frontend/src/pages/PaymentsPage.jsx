@@ -13,8 +13,8 @@ import {
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 
-const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
-const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
+const METHODS = ['Cash','Card','Online Transfer','QR Payment','Loyalty Points','Package'];
+const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'QR Payment':'QR Payment', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
 const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
 
 const parseAdditionalServiceNames = (notes = '') => {

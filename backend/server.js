@@ -87,6 +87,7 @@ app.use('/api/public',       require('./routes/public'));
 
 // Auth
 app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/system',       require('./routes/system'));
 
 // Protected resources
 app.use('/api/branches',     require('./routes/branches'));
@@ -107,6 +108,7 @@ app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
 app.use('/api/discounts',    require('./routes/discounts'));
 app.use('/api/fcm-token',    require('./routes/fcmToken'));
+app.use('/api/qr-payment',   require('./routes/qrPayment'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -167,6 +169,23 @@ connectWithRetry().then(async () => {
     await runAppointmentServicesMigration();
   } catch (err) {
     console.warn('⚠  Migration appointment_services:', err.message);
+  }
+
+  try {
+    const [methodCol] = await sequelize.query(
+      "SHOW COLUMNS FROM payment_splits LIKE 'method'"
+    );
+    const colType = String(methodCol?.[0]?.Type || '').toLowerCase();
+    if (colType && !colType.includes("'qr payment'")) {
+      await sequelize.query(
+        "ALTER TABLE payment_splits MODIFY COLUMN method ENUM('Cash','Card','Online Transfer','QR Payment','Loyalty Points','Package') NOT NULL"
+      );
+      console.log('✓ Migration: payment_splits.method enum updated with QR Payment.');
+    } else {
+      console.log('✓ Migration: payment_splits.method already supports QR Payment.');
+    }
+  } catch (err) {
+    console.warn('⚠  Migration payment_splits.method:', err.message);
   }
 
   startAppointmentReminderCron();

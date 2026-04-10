@@ -17,7 +17,7 @@ const STATUS_BADGE  = {
   expired:   { bg:'#FEE2E2', color:'#DC2626' },
   completed: { bg:'#F1F5F9', color:'#475467' },
 };
-const PAYMENT_METHODS = ['Cash','Card','Online Transfer','Bank Transfer'];
+const PAYMENT_METHODS = ['Cash','Card','Online Transfer','Bank Transfer','QR Payment'];
 const EMPTY_PKG  = { name:'', description:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
 const EMPTY_SELL = { customer_id:'', package_id:'', branch_id:'', payment_method:'Cash', notes:'' };
 const EMPTY_CREATE_ACTIVATE = { customer_id:'', payment_method:'Cash', notes:'', activate_all:false };

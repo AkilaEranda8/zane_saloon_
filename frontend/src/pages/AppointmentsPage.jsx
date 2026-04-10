@@ -1030,7 +1030,7 @@ export default function AppointmentsPage() {
                 </FormGroup>
                 <FormGroup label="Payment Method" required>
                   <Select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
-                    {['Cash','Card','Bank Transfer','Online'].map(m=><option key={m} value={m}>{m}</option>)}
+                    {['Cash','Card','Bank Transfer','Online','QR Payment'].map(m=><option key={m} value={m}>{m}</option>)}
                   </Select>
                 </FormGroup>
               </div>

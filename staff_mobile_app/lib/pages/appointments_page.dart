@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'add_appointment_modal.dart';
+import 'qr_payment_dialog.dart';
 import 'edit_appointment_modal.dart';
 import '../models/appointment.dart';
 import '../models/salon_service.dart';
@@ -1728,12 +1729,13 @@ class _PaySheetState extends State<_PaySheet> {
   static const _pBorder = Color(0xFFE5E7EB);
 
   static const _methods = [
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package',
+    'Cash', 'Card', 'Online Transfer', 'QR Payment', 'Loyalty Points', 'Package',
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
+    'QR Payment':      Icons.qr_code_2_rounded,
     'Loyalty Points':  Icons.stars_rounded,
     'Package':         Icons.card_giftcard_rounded,
   };
@@ -1830,7 +1832,7 @@ class _PaySheetState extends State<_PaySheet> {
     });
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
     final ids = _orderedServiceIds();
     if (ids.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1844,6 +1846,10 @@ class _PaySheetState extends State<_PaySheet> {
         const SnackBar(content: Text('Enter a valid amount')),
       );
       return;
+    }
+    if (_method == 'QR Payment') {
+      final confirmed = await QrPaymentDialog.show(context, amount: paid);
+      if (!confirmed || !mounted) return;
     }
     final gross = _grossFromSelection();
     final promo = _computedPromo();

@@ -986,7 +986,7 @@ export default function WalkInPage() {
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {['Cash', 'Card', 'Online Transfer'].map((m) => {
+                  {['Cash', 'Card', 'Online Transfer', 'QR Payment'].map((m) => {
                     const active = paymentMethod === m;
                     return (
                       <button

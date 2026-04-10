@@ -12,7 +12,7 @@ const PaymentSplit = sequelize.define('PaymentSplit', {
     allowNull: false,
   },
   method: {
-    type: DataTypes.ENUM('Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package'),
+    type: DataTypes.ENUM('Cash', 'Card', 'Online Transfer', 'QR Payment', 'Loyalty Points', 'Package'),
     allowNull: false,
   },
   amount: {

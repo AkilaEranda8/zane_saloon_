@@ -618,6 +618,35 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ── QR Payment (HelaPOS) ─────────────────────────────────────────────────────
+
+  /// Generates a dynamic LankaQR for [amount].
+  /// Returns a map with keys: qr_string, reference, etc. or throws on error.
+  Future<Map<String, dynamic>> generateQRPayment({required double amount}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot generate QR payment).');
+    }
+    return _api.generateQRPayment(token: token, amount: amount);
+  }
+
+  /// Checks the current status of an outstanding QR payment.
+  /// [payment_status]: 0 = Pending, 2 = Success, -1 = Failed.
+  Future<Map<String, dynamic>> checkQRPaymentStatus({
+    String? reference,
+    String? qrReference,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot check QR payment status).');
+    }
+    return _api.checkQRPaymentStatus(
+      token: token,
+      reference: reference,
+      qrReference: qrReference,
+    );
+  }
+
   Future<ExpenseListResult?> loadExpenses({
     String? branchId,
     int page = 1,

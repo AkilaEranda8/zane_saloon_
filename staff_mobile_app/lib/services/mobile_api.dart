@@ -677,6 +677,59 @@ class MobileApi {
     }
   }
 
+  // ── QR Payment (HelaPOS) ─────────────────────────────────────────────────────
+
+  /// POST /api/qr-payment/generate
+  /// Returns the HelaPOS QR payload including [qr_string] and [reference].
+  Future<Map<String, dynamic>> generateQRPayment({
+    required String token,
+    required double amount,
+    String? reference,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/qr-payment/generate');
+    final body = <String, dynamic>{'amount': amount};
+    if (reference != null && reference.isNotEmpty) body['reference'] = reference;
+    final response = await http.post(
+      uri,
+      headers: {
+        ..._authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    final decoded = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(decoded['message'] ?? 'QR generation failed');
+    }
+    return decoded;
+  }
+
+  /// POST /api/qr-payment/status
+  /// Returns [payment_status]: 0=Pending, 2=Success, -1=Failed.
+  Future<Map<String, dynamic>> checkQRPaymentStatus({
+    required String token,
+    String? reference,
+    String? qrReference,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/qr-payment/status');
+    final body = <String, dynamic>{};
+    if (reference != null) body['reference'] = reference;
+    if (qrReference != null) body['qr_reference'] = qrReference;
+    final response = await http.post(
+      uri,
+      headers: {
+        ..._authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    final decoded = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(decoded['message'] ?? 'QR status check failed');
+    }
+    return decoded;
+  }
+
   Future<List<WalkInEntry>> fetchWalkIns({
     required String token,
     required String branchId,

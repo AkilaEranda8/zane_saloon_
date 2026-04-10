@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'qr_payment_dialog.dart';
 import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
@@ -99,12 +100,13 @@ class AddPaymentModal extends StatefulWidget {
 
 class _AddPaymentModalState extends State<AddPaymentModal> {
   static const _methods = <String>[
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package'
+    'Cash', 'Card', 'Online Transfer', 'QR Payment', 'Loyalty Points', 'Package'
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
+    'QR Payment':      Icons.qr_code_2_rounded,
     'Loyalty Points':  Icons.stars_rounded,
     'Package':         Icons.card_giftcard_rounded,
   };
@@ -223,7 +225,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_customerId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,6 +247,13 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       orElse: () => Customer(id: '', name: 'Walk-in', phone: '', email: ''),
     );
     final promo = _computedPromo();
+    if (_method == 'QR Payment') {
+      final paid = double.tryParse(_paidAmountCtrl.text.trim()) ?? 0;
+      if (paid > 0) {
+        final confirmed = await QrPaymentDialog.show(context, amount: paid);
+        if (!confirmed || !mounted) return;
+      }
+    }
     Navigator.of(context).pop(AddPaymentModalResult(
       branchId:       (_branchId ?? '').trim(),
       customerId:     _customerId.trim(),

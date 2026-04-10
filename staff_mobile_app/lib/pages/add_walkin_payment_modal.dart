@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'qr_payment_dialog.dart';
 import '../models/salon_service.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -89,12 +90,13 @@ class AddWalkInPaymentModal extends StatefulWidget {
 
 class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   static const _methods = [
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package',
+    'Cash', 'Card', 'Online Transfer', 'QR Payment', 'Loyalty Points', 'Package',
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
+    'QR Payment':      Icons.qr_code_2_rounded,
     'Loyalty Points':  Icons.stars_rounded,
     'Package':         Icons.card_giftcard_rounded,
   };
@@ -233,7 +235,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_orderedSelectedServiceIds().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -243,6 +245,13 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     }
     final gross = _totalSelectedAmount();
     final promo = _computedPromo();
+    if (_method == 'QR Payment') {
+      final paid = double.tryParse(_amtCtrl.text.trim()) ?? 0;
+      if (paid > 0) {
+        final confirmed = await QrPaymentDialog.show(context, amount: paid);
+        if (!confirmed || !mounted) return;
+      }
+    }
     Navigator.of(context).pop(AddWalkInPaymentModalResult(
       method: _method,
       amount: _amtCtrl.text.trim(),
