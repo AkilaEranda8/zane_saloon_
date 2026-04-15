@@ -58,6 +58,7 @@ services:
       HELAPOS_APP_ID: ${HELAPOS_APP_ID:-}
       HELAPOS_APP_SECRET: ${HELAPOS_APP_SECRET:-}
       HELAPOS_BUSINESS_ID: ${HELAPOS_BUSINESS_ID:-}
+      HELAPOS_BUSINESS_USER_ID: ${HELAPOS_BUSINESS_USER_ID:-}
       HELAPOS_BASE_URL: ${HELAPOS_BASE_URL:-https://helapos.lk/merchant-api}
     expose:
       - "5000"

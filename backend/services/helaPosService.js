@@ -19,11 +19,20 @@ let _accessToken    = null;
 let _refreshToken   = null;
 let _tokenExpiresAt = 0;
 
-function _authCode() {
-  const id  = process.env.HELAPOS_APP_ID     || '';
-  const sec = process.env.HELAPOS_APP_SECRET  || '';
-  if (!id || !sec) return '';
-  return Buffer.from(`${id}:${sec}`).toString('base64');
+function _authCandidates() {
+  const appId = String(process.env.HELAPOS_APP_ID || '').trim();
+  const businessUserId = String(process.env.HELAPOS_BUSINESS_USER_ID || '').trim();
+  const sec = String(process.env.HELAPOS_APP_SECRET || '').trim();
+  if (!sec) return [];
+
+  const ids = [];
+  if (appId) ids.push(appId);
+  if (businessUserId && businessUserId !== appId) ids.push(businessUserId);
+
+  return ids.map((id) => ({
+    id,
+    code: Buffer.from(`${id}:${sec}`).toString('base64'),
+  }));
 }
 
 async function _post(endpoint, body, extraHeaders = {}) {
@@ -54,26 +63,33 @@ async function _getToken() {
     } catch (_) { /* fall through to fresh login */ }
   }
 
-  // Fresh token via Basic auth (Base64 of AppID:AppSecret)
-  const code = _authCode();
-  if (!code) {
-    throw new Error('HELAPOS_APP_ID and HELAPOS_APP_SECRET env variables are not set.');
+  // Fresh token via Basic auth. Prefer App ID, then fallback to Business User ID.
+  const candidates = _authCandidates();
+  if (candidates.length === 0) {
+    throw new Error(
+      'Set HELAPOS_APP_SECRET and either HELAPOS_APP_ID or HELAPOS_BUSINESS_USER_ID env variables.',
+    );
   }
 
-  const data = await _post(
-    '/merchant/api/v1/getToken',
-    { grant_type: 'client_credentials' },
-    { Authorization: `Basic ${code}` },
-  );
+  let lastError = 'Unknown HelaPOS auth error';
+  for (const candidate of candidates) {
+    const data = await _post(
+      '/merchant/api/v1/getToken',
+      { grant_type: 'client_credentials' },
+      { Authorization: `Basic ${candidate.code}` },
+    );
 
-  if (data.code !== 200 || !data.accessToken) {
-    throw new Error(`HelaPOS getToken failed: ${data.statusMessage || JSON.stringify(data)}`);
+    if (data.code === 200 && data.accessToken) {
+      _accessToken    = data.accessToken;
+      _refreshToken   = data.refreshToken;
+      _tokenExpiresAt = Date.now() + 25 * 60 * 1000;
+      return _accessToken;
+    }
+
+    lastError = data.statusMessage || data.message || JSON.stringify(data);
   }
 
-  _accessToken    = data.accessToken;
-  _refreshToken   = data.refreshToken;
-  _tokenExpiresAt = Date.now() + 25 * 60 * 1000;
-  return _accessToken;
+  throw new Error(`HelaPOS getToken failed: ${lastError}`);
 }
 
 /**
