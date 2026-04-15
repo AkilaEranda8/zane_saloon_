@@ -35,7 +35,26 @@ router.post('/status', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'reference or qr_reference is required.' });
     }
     const data = await helaPOS.checkStatus({ reference, qr_reference });
-    return res.json(data);
+
+    // Normalize common fields expected by clients while preserving full payload.
+    const paymentStatus =
+      data?.payment_status ??
+      data?.sale?.payment_status ??
+      data?.data?.payment_status ??
+      data?.data?.sale?.payment_status;
+
+    const normalized = {
+      ...data,
+      ...(paymentStatus !== undefined ? { payment_status: paymentStatus } : {}),
+      ...(data?.reference ? { reference: data.reference } : {}),
+      ...(data?.qr_reference
+        ? { qr_reference: data.qr_reference }
+        : data?.sale?.reference_id
+          ? { qr_reference: data.sale.reference_id }
+          : {}),
+    };
+
+    return res.json(normalized);
   } catch (err) {
     console.error('[QR status]', err.message);
     return res.status(502).json({ message: err.message });

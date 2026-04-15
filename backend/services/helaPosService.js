@@ -100,7 +100,9 @@ async function generateQR({ amount, reference }) {
   }
 
   return {
+    // Keep both keys for compatibility with existing mobile clients.
     qr_data:       data.qr_data,
+    qr_string:     data.qr_data,
     qr_reference:  data.qr_reference,
     reference:     data.reference || reference,
   };
