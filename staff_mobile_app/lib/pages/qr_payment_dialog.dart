@@ -35,12 +35,14 @@ class QrPaymentDialog extends StatefulWidget {
 
 enum _QrStatus { loading, ready, success, failed }
 
+
 class _QrPaymentDialogState extends State<QrPaymentDialog> {
   _QrStatus _status = _QrStatus.loading;
   String? _qrString;
   String? _reference;
   String? _qrReference;
   String? _errorMsg;
+  AppState? _appState;
 
   Timer? _pollTimer;
   static const _pollInterval = Duration(seconds: 3);
@@ -51,9 +53,13 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
   static const int _statusFailed = -1;
 
   @override
-  void initState() {
-    super.initState();
-    _generateQR();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final appState = AppStateScope.of(context);
+    if (_appState != appState) {
+      _appState = appState;
+      _generateQR();
+    }
   }
 
   @override
@@ -64,7 +70,8 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
 
   Future<void> _generateQR() async {
     try {
-      final appState = AppStateScope.of(context);
+      final appState = _appState;
+      if (appState == null) return;
       final result = await appState.generateQRPayment(amount: widget.amount);
 
       final qrString   = result['qr_string']   as String?;
@@ -105,7 +112,8 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
   Future<void> _checkStatus() async {
     if (!mounted) return;
     try {
-      final appState = AppStateScope.of(context);
+      final appState = _appState;
+      if (appState == null) return;
       final data = await appState.checkQRPaymentStatus(
         reference:   _reference,
         qrReference: _qrReference,
@@ -141,28 +149,75 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(children: [
-        const Icon(Icons.qr_code_2_rounded, size: 28),
-        const SizedBox(width: 10),
-        const Text('QR Payment'),
-      ]),
-      content: SizedBox(
-        width: 280,
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Container(
+        width: 340,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Amount: Rs. ${widget.amount.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            // Gradient header
+            Container(
+              decoration: const BoxDecoration(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                gradient: LinearGradient(
+                  colors: [Color(0xFF059669), Color(0xFF10B981)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 0),
+              child: Column(
+                children: [
+                  Icon(Icons.qr_code_2_rounded, size: 44, color: Colors.white),
+                  const SizedBox(height: 6),
+                  Text('QR Payment', style: theme.textTheme.titleLarge?.copyWith(
+                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.2)),
+                ],
+              ),
             ),
-            const SizedBox(height: 18),
-            _buildBody(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Amount', style: theme.textTheme.labelMedium?.copyWith(color: Colors.grey[600])),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Rs. ${widget.amount.toStringAsFixed(2)}',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: const Color(0xFF059669), fontWeight: FontWeight.w900, fontSize: 28),
+                  ),
+                  const SizedBox(height: 18),
+                  _buildBody(),
+                ],
+              ),
+            ),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: _buildActions(),
+              ),
+            ),
           ],
         ),
       ),
-      actions: _buildActions(),
     );
   }
 
@@ -233,14 +288,21 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
 
   List<Widget> _buildActions() {
     if (_status == _QrStatus.success) return [];
-
-    return [
+    final List<Widget> actions = [];
+    actions.add(
       TextButton(
         onPressed: _cancel,
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFF059669),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         child: Text(_status == _QrStatus.failed ? 'Close' : 'Cancel'),
       ),
-      if (_status == _QrStatus.failed)
-        TextButton(
+    );
+    if (_status == _QrStatus.failed) {
+      actions.add(const SizedBox(width: 8));
+      actions.add(
+        ElevatedButton(
           onPressed: () {
             setState(() {
               _status   = _QrStatus.loading;
@@ -249,8 +311,17 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
             });
             _generateQR();
           },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF059669),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           child: const Text('Retry'),
         ),
-    ];
+      );
+    }
+    return actions;
   }
 }

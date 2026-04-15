@@ -60,6 +60,61 @@ class _WalkInPageState extends State<WalkInPage> {
   WalkInQueueSocket? _queueSocket;
   String? _activeBranchId;
 
+  static String _normalizeServiceName(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'[.;:]+$'), '');
+  }
+
+  String? _serviceIdByName(String name) {
+    final key = _normalizeServiceName(name);
+    if (key.isEmpty) return null;
+    for (final s in _services) {
+      if (_normalizeServiceName(s.name) == key) {
+        return s.id;
+      }
+    }
+    return null;
+  }
+
+  List<String> _orderedServiceIdsForEntry(WalkInEntry e) {
+    final out = <String>[];
+    final seen = <String>{};
+
+    void addId(String raw) {
+      final v = raw.trim();
+      if (v.isEmpty) return;
+      if (seen.add(v)) out.add(v);
+    }
+
+    final direct = e.orderedServiceIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    if (direct.isNotEmpty) {
+      for (final id in direct) {
+        addId(id);
+      }
+    } else {
+      addId(e.serviceId);
+    }
+
+    // Legacy walk-ins store additional services in notes only.
+    if (out.length <= 1) {
+      for (final name in AppointmentNotes.parseAdditionalServiceNames(e.note)) {
+        final sid = _serviceIdByName(name);
+        if (sid != null) {
+          addId(sid);
+        }
+      }
+    }
+
+    return out;
+  }
+
   @override
   void dispose() {
     _queueSocket?.disconnect();
@@ -349,7 +404,7 @@ class _WalkInPageState extends State<WalkInPage> {
     final initialPay = e.totalAmount > 0
         ? e.totalAmount.toStringAsFixed(0)
         : (svc.price > 0 ? svc.price.toStringAsFixed(0) : '');
-    final preIds = e.orderedServiceIds;
+    final preIds = _orderedServiceIdsForEntry(e);
     final selectedForModal = preIds.isNotEmpty
         ? preIds
         : (e.serviceId.isNotEmpty ? [e.serviceId] : <String>[]);

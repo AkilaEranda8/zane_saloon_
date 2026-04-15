@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/walkin_entry.dart';
+import '../utils/appointment_notes.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 import 'add_walkin_modal.dart';
 
@@ -83,6 +84,25 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
         .trim();
   }
 
+  static String _normalizeServiceName(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'[.;:]+$'), '');
+  }
+
+  String? _serviceIdByName(String name) {
+    final key = _normalizeServiceName(name);
+    if (key.isEmpty) return null;
+    for (final s in widget.services) {
+      if (_normalizeServiceName(s.name) == key) {
+        return s.id;
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +114,14 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
     final list = ids.isNotEmpty
         ? ids
         : (e.serviceId.isNotEmpty ? [e.serviceId] : <String>[]);
+    if (list.length <= 1) {
+      for (final name in AppointmentNotes.parseAdditionalServiceNames(e.note)) {
+        final sid = _serviceIdByName(name);
+        if (sid != null && !list.contains(sid)) {
+          list.add(sid);
+        }
+      }
+    }
     if (list.isNotEmpty) {
       _primaryServiceId = list.first;
       _extraServiceIds.addAll(list.length > 1 ? list.sublist(1) : []);
