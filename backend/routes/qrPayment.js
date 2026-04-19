@@ -187,7 +187,7 @@ router.post('/generate', verifyToken, async (req, res) => {
 
 // Cache for HelaPOS status responses (separate from webhook cache)
 const statusResponseCache = new Map();
-const STATUS_CACHE_TTL_MS = 8_000; // Don't re-query HelaPOS within 8 seconds
+const STATUS_CACHE_TTL_MS = 15_000; // Don't re-query HelaPOS within 15 seconds (webhook handles instant confirmation)
 
 function getCachedStatusResponse(key) {
   const k = cacheKey(key);

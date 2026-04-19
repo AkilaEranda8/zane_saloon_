@@ -36,34 +36,23 @@ function _authCandidates() {
 }
 
 async function _post(endpoint, body, extraHeaders = {}) {
-  const maxRetries = 2;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const res = await fetch(`${BASE_URL()}${endpoint}`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body:    JSON.stringify(body),
-    });
+  const res = await fetch(`${BASE_URL()}${endpoint}`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    body:    JSON.stringify(body),
+  });
 
-    // Rate-limited: wait and retry (once only, with longer delay)
-    if (res.status === 429 || res.status === 403) {
-      const text = await res.text();
-      if (text.includes('Rate limit') || text.includes('Too many')) {
-        if (attempt < maxRetries - 1) {
-          const delay = (attempt + 1) * 5000; // 5s, 10s
-          console.warn(`[HelaPOS] Rate limited on ${endpoint}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(`HelaPOS rate limit exceeded on ${endpoint}`);
-      }
-      // 403 for auth errors — don't retry
-      try { return JSON.parse(text); } catch { return { error: text }; }
+  // Rate-limited — fail fast, let the caller handle it
+  if (res.status === 429 || res.status === 403) {
+    const text = await res.text();
+    if (text.includes('Rate limit') || text.includes('Too many')) {
+      throw new Error(`HelaPOS rate limited on ${endpoint}`);
     }
-
-    return res.json();
+    // 403 for auth errors
+    try { return JSON.parse(text); } catch { return { error: text }; }
   }
 
-  throw new Error(`HelaPOS request failed after ${maxRetries} attempts on ${endpoint}`);
+  return res.json();
 }
 
 async function _getToken() {
@@ -126,10 +115,14 @@ async function generateQR({ amount, reference }) {
     throw new Error('HELAPOS_BUSINESS_ID env variable is not set.');
   }
 
+  // nu = notify_url — HelaPOS will POST payment result to this URL
+  const notifyUrl = process.env.HELAPOS_WEBHOOK_URL
+    || 'https://api.zanesalon.com/api/qr-payment/webhook';
+
   const token = await _getToken();
   const data  = await _post(
     '/merchant/api/helapos/qr/generate',
-    { b: businessId, r: String(reference), am: parseFloat(amount) },
+    { b: businessId, r: String(reference), am: parseFloat(amount), nu: notifyUrl },
     { Authorization: `Bearer ${token}` },
   );
 
