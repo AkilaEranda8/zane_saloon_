@@ -183,6 +183,33 @@ router.post('/generate', verifyToken, async (req, res) => {
 
 // ── POST /api/qr-payment/status ──────────────────────────────────────────────
 // Protected (JWT). Polls HelaPOS for the status of a QR payment.
+// Uses aggressive caching to avoid HelaPOS rate-limiting.
+
+// Cache for HelaPOS status responses (separate from webhook cache)
+const statusResponseCache = new Map();
+const STATUS_CACHE_TTL_MS = 8_000; // Don't re-query HelaPOS within 8 seconds
+
+function getCachedStatusResponse(key) {
+  const k = cacheKey(key);
+  if (!k) return undefined;
+  const hit = statusResponseCache.get(k);
+  if (!hit) return undefined;
+  if (Date.now() - hit.ts > STATUS_CACHE_TTL_MS) {
+    statusResponseCache.delete(k);
+    return undefined;
+  }
+  return hit;
+}
+
+function putStatusResponseCache(key, data, paymentStatus) {
+  const k = cacheKey(key);
+  if (!k) return;
+  statusResponseCache.set(k, { data, paymentStatus, ts: Date.now() });
+}
+
+// In-flight guard: only one HelaPOS call per reference at a time
+const inFlightStatusChecks = new Map();
+
 router.post('/status', verifyToken, async (req, res) => {
   try {
     const { reference, qr_reference } = req.body || {};
@@ -190,40 +217,79 @@ router.post('/status', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'reference or qr_reference is required.' });
     }
     sweepWebhookStatusCache();
-    const cachedStatus = getWebhookStatus(reference) ?? getWebhookStatus(qr_reference);
-    const queryCandidates = [];
-    if (qr_reference) queryCandidates.push({ qr_reference });
-    if (reference) queryCandidates.push({ reference });
 
+    // 1) If webhook already confirmed success/failure, return immediately (no HelaPOS call)
+    const cachedStatus = getWebhookStatus(reference) ?? getWebhookStatus(qr_reference);
+    if (cachedStatus === 2 || cachedStatus === -1) {
+      return res.json({
+        statusCode: '200',
+        payment_status: cachedStatus,
+        reference: reference || '',
+        qr_reference: qr_reference || '',
+        source: 'webhook',
+      });
+    }
+
+    // 2) Return cached HelaPOS response if still fresh (avoid hammering the API)
+    const cachedResp = getCachedStatusResponse(reference) || getCachedStatusResponse(qr_reference);
+    if (cachedResp) {
+      return res.json({
+        ...cachedResp.data,
+        payment_status: cachedResp.paymentStatus ?? 0,
+        source: 'cache',
+      });
+    }
+
+    // 3) Deduplicate in-flight requests for the same reference
+    const flightKey = cacheKey(reference || qr_reference);
+    if (inFlightStatusChecks.has(flightKey)) {
+      // Another request is already checking — return pending
+      return res.json({
+        statusCode: '200',
+        payment_status: 0,
+        reference: reference || '',
+        qr_reference: qr_reference || '',
+        source: 'in_flight',
+      });
+    }
+
+    // 4) Call HelaPOS (only ONE query, prefer qr_reference)
+    inFlightStatusChecks.set(flightKey, true);
     let data = null;
     let paymentStatus;
 
-    for (const query of queryCandidates) {
-      const currentData = await helaPOS.checkStatus(query);
-      const currentStatus = normalizePaymentStatus(currentData);
-
-      if (!data) {
-        data = currentData;
-        paymentStatus = currentStatus;
-      }
-
-      if (currentStatus === 2 || currentStatus === -1) {
-        data = currentData;
-        paymentStatus = currentStatus;
-        break;
-      }
+    try {
+      const query = qr_reference ? { qr_reference } : { reference };
+      data = await helaPOS.checkStatus(query);
+      paymentStatus = normalizePaymentStatus(data);
+    } catch (err) {
+      // Rate-limited or network error — return pending, don't fail
+      console.warn('[QR status] HelaPOS call failed:', err.message);
+      return res.json({
+        statusCode: '200',
+        payment_status: 0,
+        reference: reference || '',
+        qr_reference: qr_reference || '',
+        source: 'fallback',
+      });
+    } finally {
+      inFlightStatusChecks.delete(flightKey);
     }
 
-    // Normalize common fields expected by clients while preserving full payload.
-    if (paymentStatus === undefined) paymentStatus = normalizePaymentStatus(data);
-    const finalStatus =
-      cachedStatus === 2 || cachedStatus === -1
-        ? cachedStatus
-        : paymentStatus;
+    // Cache the response
+    if (reference) putStatusResponseCache(reference, data, paymentStatus);
+    if (qr_reference) putStatusResponseCache(qr_reference, data, paymentStatus);
 
+    // Also update webhook cache if terminal status
+    if (paymentStatus === 2 || paymentStatus === -1) {
+      putWebhookStatus(reference, paymentStatus);
+      putWebhookStatus(qr_reference, paymentStatus);
+    }
+
+    const finalStatus = paymentStatus ?? 0;
     const normalized = {
       ...data,
-      ...(finalStatus !== undefined ? { payment_status: finalStatus } : {}),
+      payment_status: finalStatus,
       ...(data?.reference ? { reference: data.reference } : {}),
       ...(data?.qr_reference
         ? { qr_reference: data.qr_reference }

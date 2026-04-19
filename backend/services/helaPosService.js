@@ -36,7 +36,7 @@ function _authCandidates() {
 }
 
 async function _post(endpoint, body, extraHeaders = {}) {
-  const maxRetries = 3;
+  const maxRetries = 2;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const res = await fetch(`${BASE_URL()}${endpoint}`, {
       method:  'POST',
@@ -44,14 +44,17 @@ async function _post(endpoint, body, extraHeaders = {}) {
       body:    JSON.stringify(body),
     });
 
-    // Rate-limited: wait and retry
+    // Rate-limited: wait and retry (once only, with longer delay)
     if (res.status === 429 || res.status === 403) {
       const text = await res.text();
       if (text.includes('Rate limit') || text.includes('Too many')) {
-        const delay = (attempt + 1) * 2000; // 2s, 4s, 6s
-        console.warn(`[HelaPOS] Rate limited on ${endpoint}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
+        if (attempt < maxRetries - 1) {
+          const delay = (attempt + 1) * 5000; // 5s, 10s
+          console.warn(`[HelaPOS] Rate limited on ${endpoint}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(`HelaPOS rate limit exceeded on ${endpoint}`);
       }
       // 403 for auth errors — don't retry
       try { return JSON.parse(text); } catch { return { error: text }; }
@@ -60,7 +63,7 @@ async function _post(endpoint, body, extraHeaders = {}) {
     return res.json();
   }
 
-  throw new Error(`HelaPOS rate limit exceeded after ${maxRetries} retries on ${endpoint}`);
+  throw new Error(`HelaPOS request failed after ${maxRetries} attempts on ${endpoint}`);
 }
 
 async function _getToken() {
