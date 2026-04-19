@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:socket_io_client/socket_io_client.dart' as sio;
+import 'package:socket_io_client/socket_io_client.dart' show OptionBuilder;
 
 import '../state/app_state.dart';
 
@@ -45,7 +47,13 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
   AppState? _appState;
 
   Timer? _pollTimer;
-  static const _pollInterval = Duration(seconds: 3);
+  // Slow poll to avoid HelaPOS rate-limiting (they block at ~1 req/3s)
+  static const _pollInterval = Duration(seconds: 6);
+  int _pollCount = 0;
+  static const _maxPolls = 100; // ~10 minutes max
+
+  // Socket.IO for instant webhook-based confirmation
+  sio.Socket? _socket;
 
   // --- payment_status values from HelaPOS API ---
   static const int _statusPending = 0;
@@ -65,6 +73,7 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _disconnectSocket();
     super.dispose();
   }
 
@@ -95,6 +104,7 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
         _status      = _QrStatus.ready;
       });
 
+      _connectSocket();
       _startPolling();
     } catch (e) {
       if (!mounted) return;
@@ -105,12 +115,94 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
     }
   }
 
+  // ── Socket.IO: listen for instant webhook confirmation ─────────────────────
+  void _connectSocket() {
+    try {
+      final apiBase = _appState?.apiBaseUrl ?? '';
+      if (apiBase.isEmpty) return;
+
+      // Derive socket origin from API base URL (same as WalkInQueueSocket)
+      final u = Uri.parse(apiBase);
+      final port = u.hasPort ? ':${u.port}' : '';
+      final origin = '${u.scheme}://${u.host}$port';
+
+      _socket = sio.io(
+        origin,
+        OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .enableReconnection()
+            .setReconnectionAttempts(10)
+            .setReconnectionDelay(2000)
+            .enableForceNew()
+            .build(),
+      );
+
+      _socket!.on('qr:payment', (data) {
+        if (!mounted || _status == _QrStatus.success) return;
+
+        final map = data is Map ? data : <String, dynamic>{};
+        final ref = map['reference']?.toString() ?? '';
+        final qrRef = map['qr_reference']?.toString() ?? '';
+
+        // Only accept events for THIS payment
+        final matchesRef = _reference != null && _reference!.isNotEmpty && ref == _reference;
+        final matchesQr  = _qrReference != null && _qrReference!.isNotEmpty && qrRef == _qrReference;
+
+        if (!matchesRef && !matchesQr) return;
+
+        final rawStatus = map['payment_status'];
+        final payStatus = rawStatus is int
+            ? rawStatus
+            : int.tryParse('$rawStatus') ?? _statusPending;
+
+        if (payStatus == _statusSuccess) {
+          _pollTimer?.cancel();
+          setState(() => _status = _QrStatus.success);
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) Navigator.of(context).pop(true);
+          });
+        } else if (payStatus == _statusFailed) {
+          _pollTimer?.cancel();
+          setState(() {
+            _status   = _QrStatus.failed;
+            _errorMsg = 'Payment was declined or cancelled by the bank.';
+          });
+        }
+      });
+    } catch (_) {
+      // Socket connection is optional — polling is the fallback
+    }
+  }
+
+  void _disconnectSocket() {
+    final s = _socket;
+    _socket = null;
+    if (s != null) {
+      s.dispose();
+    }
+  }
+
   void _startPolling() {
+    _pollCount = 0;
     _pollTimer = Timer.periodic(_pollInterval, (_) => _checkStatus());
   }
 
   Future<void> _checkStatus() async {
     if (!mounted) return;
+    _pollCount++;
+
+    // Safety: stop polling after max attempts
+    if (_pollCount > _maxPolls) {
+      _pollTimer?.cancel();
+      if (_status == _QrStatus.ready) {
+        setState(() {
+          _status   = _QrStatus.failed;
+          _errorMsg = 'Payment timed out. Please try again.';
+        });
+      }
+      return;
+    }
+
     try {
       final appState = _appState;
       if (appState == null) return;
@@ -138,7 +230,7 @@ class _QrPaymentDialogState extends State<QrPaymentDialog> {
       }
       // _statusPending → keep polling
     } catch (_) {
-      // Transient network error – keep polling silently
+      // Transient network error or rate limit – keep polling silently
     }
   }
 

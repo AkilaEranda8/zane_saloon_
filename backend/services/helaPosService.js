@@ -36,12 +36,31 @@ function _authCandidates() {
 }
 
 async function _post(endpoint, body, extraHeaders = {}) {
-  const res = await fetch(`${BASE_URL()}${endpoint}`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', ...extraHeaders },
-    body:    JSON.stringify(body),
-  });
-  return res.json();
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(`${BASE_URL()}${endpoint}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+      body:    JSON.stringify(body),
+    });
+
+    // Rate-limited: wait and retry
+    if (res.status === 429 || res.status === 403) {
+      const text = await res.text();
+      if (text.includes('Rate limit') || text.includes('Too many')) {
+        const delay = (attempt + 1) * 2000; // 2s, 4s, 6s
+        console.warn(`[HelaPOS] Rate limited on ${endpoint}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      // 403 for auth errors — don't retry
+      try { return JSON.parse(text); } catch { return { error: text }; }
+    }
+
+    return res.json();
+  }
+
+  throw new Error(`HelaPOS rate limit exceeded after ${maxRetries} retries on ${endpoint}`);
 }
 
 async function _getToken() {
@@ -57,7 +76,7 @@ async function _getToken() {
       if (data.code === 200 && data.data?.[0]?.accessToken) {
         _accessToken    = data.data[0].accessToken;
         _refreshToken   = data.data[0].refreshToken;
-        _tokenExpiresAt = Date.now() + 25 * 60 * 1000;
+        _tokenExpiresAt = Date.now() + 14 * 60 * 1000;
         return _accessToken;
       }
     } catch (_) { /* fall through to fresh login */ }
@@ -82,7 +101,7 @@ async function _getToken() {
     if (data.code === 200 && data.accessToken) {
       _accessToken    = data.accessToken;
       _refreshToken   = data.refreshToken;
-      _tokenExpiresAt = Date.now() + 25 * 60 * 1000;
+      _tokenExpiresAt = Date.now() + 14 * 60 * 1000;
       return _accessToken;
     }
 
