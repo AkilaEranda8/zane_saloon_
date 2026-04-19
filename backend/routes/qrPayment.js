@@ -89,4 +89,32 @@ router.post('/webhook', (req, res) => {
   }
 });
 
+// ── POST /api/qr-payment/history ─────────────────────────────────────────────
+// Protected (JWT). Retrieves transaction history for a date range.
+router.post('/history', verifyToken, async (req, res) => {
+  try {
+    const { businessId, start, end } = req.body || {};
+    if (!start || !end) {
+      return res.status(400).json({ message: 'start and end dates are required (YYYY-MM-DD).' });
+    }
+    const data = await helaPOS.getTransactionHistory({ businessId, start, end });
+    return res.json(data);
+  } catch (err) {
+    console.error('[QR history]', err.message);
+    return res.status(502).json({ message: err.message });
+  }
+});
+
+// ── POST /api/qr-payment/revoke ──────────────────────────────────────────────
+// Protected (JWT). Revokes the HelaPOS session (logout).
+router.post('/revoke', verifyToken, async (req, res) => {
+  try {
+    const data = await helaPOS.revokeSession();
+    return res.json(data);
+  } catch (err) {
+    console.error('[QR revoke]', err.message);
+    return res.status(502).json({ message: err.message });
+  }
+});
+
 module.exports = router;

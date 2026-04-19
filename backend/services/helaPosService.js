@@ -143,4 +143,55 @@ async function checkStatus({ reference, qr_reference } = {}) {
   );
 }
 
-module.exports = { generateQR, checkStatus };
+/**
+ * Retrieve transaction history for a date range.
+ *
+ * @param {{ businessId?: string, start: string, end: string }} opts
+ *   - businessId defaults to HELAPOS_BUSINESS_ID env var
+ *   - start/end in YYYY-MM-DD format
+ * @returns {Promise<object>} HelaPOS sales list response
+ */
+async function getTransactionHistory({ businessId, start, end } = {}) {
+  const biz = businessId || process.env.HELAPOS_BUSINESS_ID || '';
+  if (!biz) {
+    throw new Error('HELAPOS_BUSINESS_ID env variable is not set.');
+  }
+  if (!start || !end) {
+    throw new Error('start and end dates are required (YYYY-MM-DD).');
+  }
+
+  const token = await _getToken();
+  return _post(
+    '/merchant/api/helapos/sales',
+    { businessId: biz, start, end },
+    { Authorization: `Bearer ${token}` },
+  );
+}
+
+/**
+ * Revoke the current session (logout).
+ * Clears the in-memory token cache so the next call forces a fresh login.
+ *
+ * @returns {Promise<object>} HelaPOS logout response
+ */
+async function revokeSession() {
+  if (!_refreshToken) {
+    return { code: 200, message: 'No active session to revoke', data: null };
+  }
+
+  const token = await _getToken();
+  const data  = await _post(
+    '/merchant/api/v1/merchant/auth/logout',
+    { refreshToken: _refreshToken },
+    { Authorization: `Bearer ${token}` },
+  );
+
+  // Clear cached tokens regardless of response
+  _accessToken    = null;
+  _refreshToken   = null;
+  _tokenExpiresAt = 0;
+
+  return data;
+}
+
+module.exports = { generateQR, checkStatus, getTransactionHistory, revokeSession };
