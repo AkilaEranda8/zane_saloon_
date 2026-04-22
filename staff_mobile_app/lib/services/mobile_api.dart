@@ -1031,6 +1031,62 @@ class MobileApi {
     return const [];
   }
 
+  // ── Attendance ───────────────────────────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> fetchAttendance({
+    required String token,
+    String? branchId,
+    String? date,
+    String? month,
+    String? staffId,
+  }) async {
+    final qp = <String, String>{};
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    if (date     != null && date.isNotEmpty)     qp['date']     = date;
+    if (month    != null && month.isNotEmpty)    qp['month']    = month;
+    if (staffId  != null && staffId.isNotEmpty)  qp['staffId']  = staffId;
+    final uri = Uri.parse('$baseUrl/api/attendance')
+        .replace(queryParameters: qp.isEmpty ? null : qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Failed to load attendance');
+    }
+    final body = _decodeList(response.body);
+    return body.whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> upsertAttendance({
+    required String token,
+    required String staffId,
+    required String date,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/attendance');
+    final body = <String, dynamic>{
+      'staff_id': int.tryParse(staffId) ?? staffId,
+      'date':     date,
+    };
+    if (status   != null) body['status']    = status;
+    if (checkIn  != null) body['check_in']  = checkIn;
+    if (checkOut != null) body['check_out'] = checkOut;
+    if (note     != null) body['note']      = note;
+    final response = await http.post(
+      uri,
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    final decoded = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(decoded['message'] ?? 'Failed to save attendance');
+    }
+    return decoded;
+  }
+
   // ── Users (permission management) ───────────────────────────────────────────
   Future<List<Map<String, dynamic>>> fetchUsers({
     required String token,

@@ -1103,6 +1103,57 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ── Attendance ────────────────────────────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> loadAttendance({
+    String? branchId,
+    String? date,
+    String? month,
+    String? staffId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load attendance).');
+    }
+    return _api.fetchAttendance(
+      token:    token,
+      branchId: branchId,
+      date:     date,
+      month:    month,
+      staffId:  staffId,
+    );
+  }
+
+  Future<bool> saveAttendance({
+    required String staffId,
+    required String date,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.upsertAttendance(
+        token:    token,
+        staffId:  staffId,
+        date:     date,
+        status:   status,
+        checkIn:  checkIn,
+        checkOut: checkOut,
+        note:     note,
+      );
+      _lastError = null;
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> loadAppUsers() async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import 'add_item_page.dart';
+import 'attendance_page.dart';
 import 'ai_chat_page.dart';
 import 'appointments_page.dart';
 import 'calendar_page.dart';
@@ -182,6 +183,19 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CommissionPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
+            title: 'Attendance',
+            subtitle: 'Mark and track staff attendance',
+            icon: Icons.fact_check_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AttendancePage()),
               );
             },
           ),
