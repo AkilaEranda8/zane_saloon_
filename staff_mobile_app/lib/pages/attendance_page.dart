@@ -141,10 +141,10 @@ class _AttendancePageState extends State<AttendancePage> {
   Future<void> _openMark(StaffMember staff) async {
     final app  = AppStateScope.of(context);
     final role = (app.currentUser?.role ?? '').toLowerCase();
-    if (role != 'superadmin' && role != 'admin' && role != 'manager') {
+    if (role != 'superadmin') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Only manager and above can mark attendance.'),
+          content: Text('Only superadmin can mark attendance.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -331,12 +331,15 @@ class _AttendancePageState extends State<AttendancePage> {
     final unmarked = _staffList.length -
         _records.where((r) => _statusLabels.containsKey(r['status'])).length;
 
+    final role     = (AppStateScope.of(context).currentUser?.role ?? '').toLowerCase();
+    final canMark  = role == 'superadmin';
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
-      itemCount: _staffList.length + (unmarked > 0 ? 1 : 0),
+      itemCount: _staffList.length + (canMark && unmarked > 0 ? 1 : 0),
       itemBuilder: (ctx, i) {
         // Summary notice at top if some staff not marked
-        if (i == 0 && unmarked > 0) {
+        if (i == 0 && unmarked > 0 && canMark) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Container(
@@ -359,13 +362,14 @@ class _AttendancePageState extends State<AttendancePage> {
           );
         }
 
-        final staffIdx = i - (unmarked > 0 ? 1 : 0);
+        final staffIdx = i - (canMark && unmarked > 0 ? 1 : 0);
         final staff    = _staffList[staffIdx];
         final record   = _recordFor(staff.id);
         return _StaffCard(
-          staff:  staff,
-          record: record,
-          onTap:  () => _openMark(staff),
+          staff:    staff,
+          record:   record,
+          canMark:  canMark,
+          onTap:    () => _openMark(staff),
         );
       },
     );
@@ -377,11 +381,13 @@ class _StaffCard extends StatelessWidget {
   const _StaffCard({
     required this.staff,
     required this.record,
+    required this.canMark,
     required this.onTap,
   });
 
   final StaffMember          staff;
   final Map<String, dynamic>? record;
+  final bool                 canMark;
   final VoidCallback          onTap;
 
   @override
@@ -452,7 +458,8 @@ class _StaffCard extends StatelessWidget {
                   style: const TextStyle(color: _muted, fontSize: 11.5),
                 )
               else
-                Text('Tap to mark attendance',
+                Text(
+                  canMark ? 'Tap to mark attendance' : 'Not marked',
                   style: TextStyle(color: _muted.withValues(alpha: 0.7),
                       fontSize: 11.5)),
               if (note != null && note.isNotEmpty) ...[
