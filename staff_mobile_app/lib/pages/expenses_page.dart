@@ -143,7 +143,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
     });
     try {
       final role = (app.currentUser?.role ?? '').toLowerCase();
-      if (role == 'superadmin') {
+      if (role == 'superadmin' || role == 'admin' || role == 'manager') {
         final br = await app.loadBranches();
         _branches = br;
       }
@@ -180,9 +180,10 @@ class _ExpensesPageState extends State<ExpensesPage> {
   Future<void> _openAdd() async {
     final app = AppStateScope.of(context);
     final role = (app.currentUser?.role ?? '').toLowerCase();
-    if (role != 'superadmin') {
+    final canAdd = role == 'superadmin' || role == 'admin' || role == 'manager';
+    if (!canAdd) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only superadmin can add expenses.')),
+        const SnackBar(content: Text('You do not have permission to add expenses.')),
       );
       return;
     }
@@ -385,17 +386,6 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   ),
                 ],
               ),
-              if (!isSuperAdmin) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'Only superadmin can add expenses',
-                  style: TextStyle(
-                    color: Color(0xFFD1FAE5),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -406,7 +396,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
   @override
   Widget build(BuildContext context) {
     final app = AppStateScope.of(context);
-    final isSuperAdmin = (app.currentUser?.role ?? '').toLowerCase() == 'superadmin';
+    final role = (app.currentUser?.role ?? '').toLowerCase();
+    final isSuperAdmin = role == 'superadmin' || role == 'admin' || role == 'manager';
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
