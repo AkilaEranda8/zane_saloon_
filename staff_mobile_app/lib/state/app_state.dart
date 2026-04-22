@@ -1103,6 +1103,33 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<List<Map<String, dynamic>>> loadAppUsers() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+    return _api.fetchUsers(token: token);
+  }
+
+  Future<bool> changeUserRole({
+    required String userId,
+    required String role,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Not authenticated';
+      return false;
+    }
+    try {
+      await _api.updateUserRole(token: token, userId: userId, role: role);
+      _lastError = null;
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Set<StaffPermission> _permissionsFromRole(String role) {
     switch (role.trim().toLowerCase()) {
       case 'superadmin':

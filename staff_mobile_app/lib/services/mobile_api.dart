@@ -1031,6 +1031,50 @@ class MobileApi {
     return const [];
   }
 
+  // ── Users (permission management) ───────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> fetchUsers({
+    required String token,
+    String? role,
+    String? branchId,
+  }) async {
+    final qp = <String, String>{};
+    if (role != null && role.isNotEmpty) qp['role'] = role;
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    final uri = Uri.parse('$baseUrl/api/users')
+        .replace(queryParameters: qp.isEmpty ? null : qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Failed to load users');
+    }
+    final body = _decode(response.body);
+    final data = body['data'];
+    if (data is List) {
+      return data.whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> updateUserRole({
+    required String token,
+    required String userId,
+    required String role,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/users/$userId');
+    final response = await http.put(
+      uri,
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode({'role': role}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Failed to update role');
+    }
+    return body;
+  }
+
   String _extractTokenFromCookie(String setCookie) {
     if (setCookie.isEmpty) return '';
     final parts = setCookie.split(';');
