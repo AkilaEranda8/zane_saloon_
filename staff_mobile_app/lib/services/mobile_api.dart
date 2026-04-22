@@ -734,10 +734,14 @@ class MobileApi {
     required String token,
     required String branchId,
     String? date,
+    String? startDate,
+    String? endDate,
   }) async {
     final qp = <String, String>{
       'branchId': branchId,
-      if (date != null && date.isNotEmpty) 'date': date,
+      if (date      != null && date.isNotEmpty)      'date':      date,
+      if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
+      if (endDate   != null && endDate.isNotEmpty)   'endDate':   endDate,
     };
     final uri = Uri.parse('$baseUrl/api/walkin').replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));

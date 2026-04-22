@@ -59,6 +59,27 @@ class _WalkInPageState extends State<WalkInPage> {
   List<StaffMember>         _staffList = const [];
   WalkInQueueSocket? _queueSocket;
   String? _activeBranchId;
+  DateTime _dateFrom       = DateTime.now();
+  DateTime _dateTo         = DateTime.now();
+  String   _dateRangeLabel = 'Today';
+  String? _statusFilter;    // null=all, or 'waiting'/'serving'/'completed'/'cancelled'/'incomplete'
+  String? _categoryFilter;  // null=all categories, or category name
+
+  bool get _isToday {
+    final n = DateTime.now();
+    return _dateFrom.year == n.year && _dateFrom.month == n.month && _dateFrom.day == n.day
+        && _dateTo.year  == n.year && _dateTo.month  == n.month && _dateTo.day  == n.day;
+  }
+
+  bool get _isSingleDay =>
+      _dateFrom.year  == _dateTo.year &&
+      _dateFrom.month == _dateTo.month &&
+      _dateFrom.day   == _dateTo.day;
+
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String get _dateLabel => _dateRangeLabel;
 
   static String _normalizeServiceName(String value) {
     return value
@@ -161,10 +182,19 @@ class _WalkInPageState extends State<WalkInPage> {
     List<WalkInEntry> queue;
     var fromCache = false;
     try {
-      queue = await app.loadWalkIns(branchId: branchId);
-      await WalkInQueueCache.save(branchId, queue);
+      if (_isSingleDay) {
+        queue = await app.loadWalkIns(
+            branchId: branchId,
+            date: _isToday ? null : _fmtDate(_dateFrom));
+        if (_isToday) await WalkInQueueCache.save(branchId, queue);
+      } else {
+        queue = await app.loadWalkIns(
+            branchId: branchId,
+            startDate: _fmtDate(_dateFrom),
+            endDate:   _fmtDate(_dateTo));
+      }
     } catch (_) {
-      final cached = await WalkInQueueCache.load(branchId);
+      final cached = _isToday ? await WalkInQueueCache.load(branchId) : null;
       if (cached == null) rethrow;
       queue = cached;
       fromCache = true;
@@ -197,6 +227,8 @@ class _WalkInPageState extends State<WalkInPage> {
   }
 
   Future<void> _silentReloadQueue() async {
+    // Only apply real-time socket updates when viewing today's queue.
+    if (!_isToday) return;
     final bid = _activeBranchId;
     if (bid == null || bid.isEmpty || !mounted) return;
     final app = AppStateScope.of(context);
@@ -211,6 +243,29 @@ class _WalkInPageState extends State<WalkInPage> {
     } catch (_) {
       /* keep current list */
     }
+  }
+
+  Future<void> _openDateFilter() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _DateFilterSheet(
+        currentFrom:  _dateFrom,
+        currentTo:    _dateTo,
+        currentLabel: _dateRangeLabel,
+        onApply: (from, to, label) {
+          setState(() {
+            _dateFrom        = from;
+            _dateTo          = to;
+            _dateRangeLabel  = label;
+            _statusFilter    = null;
+            _categoryFilter  = null;
+            _future          = _load();
+          });
+        },
+      ),
+    );
   }
 
   void _refresh() {
@@ -498,6 +553,46 @@ class _WalkInPageState extends State<WalkInPage> {
   int get _waiting   => _walkIns.where((w) => w.status == 'waiting').length;
   int get _serving   => _walkIns.where((w) => w.status == 'serving').length;
   int get _completed => _walkIns.where((w) => w.status == 'completed').length;
+  int get _cancelled => _walkIns.where((w) => w.status == 'cancelled').length;
+  int get _incomplete => _walkIns.where((w) =>
+      (w.status == 'waiting' || w.status == 'serving') && w.staffId.isEmpty).length;
+
+  // ── Filtered list ─────────────────────────────────────────────────────────
+  List<WalkInEntry> get _filteredWalkIns {
+    var list = _walkIns;
+    if (_statusFilter == 'incomplete') {
+      list = list.where((w) =>
+          (w.status == 'waiting' || w.status == 'serving') &&
+          w.staffId.isEmpty).toList();
+    } else if (_statusFilter != null) {
+      list = list.where((w) => w.status == _statusFilter).toList();
+    }
+    if (_categoryFilter != null) {
+      list = list.where((w) => w.serviceCategory == _categoryFilter).toList();
+    }
+    return list;
+  }
+
+  List<String> get _availableCategories {
+    final seen = <String>{};
+    for (final w in _walkIns) {
+      if (w.serviceCategory.isNotEmpty) seen.add(w.serviceCategory);
+    }
+    return seen.toList()..sort();
+  }
+
+  int _countForStatus(String? key) {
+    final base = _categoryFilter != null
+        ? _walkIns.where((w) => w.serviceCategory == _categoryFilter).toList()
+        : _walkIns;
+    if (key == null) return base.length;
+    if (key == 'incomplete') {
+      return base.where((w) =>
+          (w.status == 'waiting' || w.status == 'serving') &&
+          w.staffId.isEmpty).length;
+    }
+    return base.where((w) => w.status == key).length;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -579,40 +674,77 @@ class _WalkInPageState extends State<WalkInPage> {
   ]);
 
   // ── Body ──────────────────────────────────────────────────────────────────
-  Widget _buildBody() => Column(children: [
-    _buildHeader(loading: false),
-    Expanded(
-      child: _walkIns.isEmpty
-          ? RefreshIndicator(
-              color: _forest,
-              onRefresh: () async => _refresh(),
-              child: LayoutBuilder(
-                builder: (ctx, constraints) => SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: _buildEmpty(),
+  Widget _buildBody() {
+    final filtered = _filteredWalkIns;
+    return Column(children: [
+      _buildHeader(loading: false),
+      Expanded(
+        child: _walkIns.isEmpty
+            ? RefreshIndicator(
+                color: _forest,
+                onRefresh: () async => _refresh(),
+                child: LayoutBuilder(
+                  builder: (ctx, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: _buildEmpty(),
+                    ),
                   ),
                 ),
-              ),
-            )
-          : RefreshIndicator(
-              color: _forest,
-              onRefresh: () async => _refresh(),
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-            itemCount: _walkIns.length,
-                itemBuilder: (ctx, i) => _WalkInCard(
-                  entry: _walkIns[i],
-                  onEdit:    () => _editWalkIn(_walkIns[i]),
-                  onPayment: () => _collectPayment(_walkIns[i]),
-                  onAssign:  () => _assignStaff(_walkIns[i]),
-                  onCancel:  () => _cancelWalkIn(_walkIns[i]),
-                ),
-              ),
-            ),
+              )
+            : filtered.isEmpty
+                ? _buildFilterEmpty()
+                : RefreshIndicator(
+                    color: _forest,
+                    onRefresh: () async => _refresh(),
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                      itemCount: filtered.length,
+                      itemBuilder: (ctx, i) => _WalkInCard(
+                        entry: filtered[i],
+                        onEdit:    () => _editWalkIn(filtered[i]),
+                        onPayment: () => _collectPayment(filtered[i]),
+                        onAssign:  () => _assignStaff(filtered[i]),
+                        onCancel:  () => _cancelWalkIn(filtered[i]),
+                      ),
+                    ),
+                  ),
+      ),
+    ]);
+  }
+
+  // ── Filter-empty ───────────────────────────────────────────────────────────
+  Widget _buildFilterEmpty() => Center(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 88),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 64, height: 64,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF3F4F6),
+            shape: BoxShape.circle),
+          child: const Icon(Icons.filter_list_off_rounded,
+              color: _muted, size: 28),
+        ),
+        const SizedBox(height: 14),
+        const Text('No entries match this filter',
+          style: TextStyle(color: _ink, fontSize: 15,
+              fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        GestureDetector(
+          onTap: () => setState(() {
+            _statusFilter   = null;
+            _categoryFilter = null;
+          }),
+          child: const Text('Clear filters',
+            style: TextStyle(color: _emerald, fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        ),
+      ]),
     ),
-  ]);
+  );
 
   // ── Empty ──────────────────────────────────────────────────────────────────
   Widget _buildEmpty() => Center(child: Padding(
@@ -683,6 +815,46 @@ class _WalkInPageState extends State<WalkInPage> {
                       fontWeight: FontWeight.w800, letterSpacing: -0.3)),
                 ]),
               ),
+              // Date picker button
+              if (!loading)
+                GestureDetector(
+                  onTap: _openDateFilter,
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: _isToday
+                          ? _surface
+                          : const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: _isToday
+                              ? _border
+                              : const Color(0xFFFDBA74)),
+                      boxShadow: [BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 6, offset: const Offset(0, 2))],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.calendar_today_rounded,
+                          size: 13,
+                          color: _isToday
+                              ? _forest
+                              : Colors.orange.shade700),
+                      const SizedBox(width: 5),
+                      Text(
+                        _dateLabel,
+                        style: TextStyle(
+                          color: _isToday
+                              ? _forest
+                              : Colors.orange.shade800,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
+                      ),
+                    ]),
+                  ),
+                ),
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: _refresh,
                 child: Container(
@@ -765,8 +937,8 @@ class _WalkInPageState extends State<WalkInPage> {
                                 color: Colors.white, fontSize: 28,
                                 fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                       const SizedBox(height: 2),
-                      const Text('customers today',
-                        style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+                      Text(_isToday ? 'customers today' : _dateRangeLabel,
+                        style: const TextStyle(color: Colors.white54, fontSize: 11.5)),
                     ],
                   ),
                 ),
@@ -782,8 +954,84 @@ class _WalkInPageState extends State<WalkInPage> {
             ),
           ),
 
+          // Filter chips
+          if (!loading && _walkIns.isNotEmpty) _buildFilters(),
+
         ]),
       ),
+    );
+  }
+
+  // ── Filter chips ────────────────────────────────────────────────────────────
+  Widget _buildFilters() {
+    final cats = _availableCategories;
+
+    // (filterKey, label, unselected text color, isIncomplete)
+    final statusOpts = <(String?, String, Color?, bool)>[
+      (null,         'All',         null,                        false),
+      ('waiting',    'Waiting',     const Color(0xFF92400E),     false),
+      ('serving',    'In Service',  const Color(0xFF1E3A8A),     false),
+      ('completed',  'Completed',   const Color(0xFF14532D),     false),
+      ('cancelled',  'Cancelled',   const Color(0xFF7F1D1D),     false),
+      if (_incomplete > 0)
+        ('incomplete', 'Incomplete', const Color(0xFFB45309),    true),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Status filter row
+        SizedBox(
+          height: 38,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: statusOpts.map((opt) {
+              final key        = opt.$1;
+              final isSelected = _statusFilter == key;
+              final cnt        = _countForStatus(key);
+              return _FilterChip(
+                label:        '${opt.$2} ($cnt)',
+                selected:     isSelected,
+                accentColor:  opt.$3,
+                isIncomplete: opt.$4,
+                onTap:        () => setState(() => _statusFilter = key),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // Category filter row (only when 2+ categories present)
+        if (cats.length >= 2) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _FilterChip(
+                  label:    'All Services',
+                  selected: _categoryFilter == null,
+                  onTap:    () => setState(() => _categoryFilter = null),
+                ),
+                ...cats.map((cat) {
+                  final cnt = _walkIns
+                      .where((w) => w.serviceCategory == cat)
+                      .length;
+                  return _FilterChip(
+                    label:    '$cat ($cnt)',
+                    selected: _categoryFilter == cat,
+                    onTap:    () => setState(() => _categoryFilter = cat),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 10),
+      ],
     );
   }
 }
@@ -1297,6 +1545,242 @@ class _StaffPickerSheet extends StatelessWidget {
 
         SafeArea(top: false, child: const SizedBox(height: 4)),
       ]),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DATE FILTER SHEET
+// ═════════════════════════════════════════════════════════════════════════════
+class _DateFilterSheet extends StatelessWidget {
+  const _DateFilterSheet({
+    required this.currentFrom,
+    required this.currentTo,
+    required this.currentLabel,
+    required this.onApply,
+  });
+
+  final DateTime currentFrom;
+  final DateTime currentTo;
+  final String   currentLabel;
+  final void Function(DateTime from, DateTime to, String label) onApply;
+
+  Future<void> _applyPreset(
+    BuildContext ctx,
+    DateTime from,
+    DateTime to,
+    String label,
+  ) async {
+    Navigator.of(ctx).pop();
+    onApply(from, to, label);
+  }
+
+  Future<void> _pickCustom(BuildContext ctx) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: ctx,
+      initialDate: currentFrom,
+      firstDate:   DateTime(now.year - 1),
+      lastDate:    now,
+      builder: (c, child) => Theme(
+        data: Theme.of(c).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: _forest, onPrimary: Colors.white, surface: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null || !ctx.mounted) return;
+    Navigator.of(ctx).pop();
+    const mn = ['Jan','Feb','Mar','Apr','May','Jun',
+                 'Jul','Aug','Sep','Oct','Nov','Dec'];
+    final nowD = DateTime.now();
+    final isToday = picked.year == nowD.year &&
+        picked.month == nowD.month && picked.day == nowD.day;
+    final label = isToday
+        ? 'Today'
+        : '${mn[picked.month - 1]} ${picked.day}';
+    onApply(picked, picked, label);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now   = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Preset definitions: (label, from, to)
+    final presets = <(String, DateTime, DateTime)>[
+      ('Today',      today,                                   today),
+      ('Yesterday',  today.subtract(const Duration(days: 1)),
+                     today.subtract(const Duration(days: 1))),
+      ('This Week',  today.subtract(const Duration(days: 6)), today),
+      ('This Month', DateTime(now.year, now.month, 1),        today),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Handle
+        Container(
+          width: 40, height: 4,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE5E7EB),
+            borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(height: 18),
+
+        // Title
+        Row(children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [_forest, _emerald],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.calendar_month_rounded,
+                color: Colors.white, size: 16),
+          ),
+          const SizedBox(width: 10),
+          const Text('Filter by Date',
+            style: TextStyle(color: _ink, fontSize: 16,
+                fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+        ]),
+        const SizedBox(height: 18),
+
+        // Preset grid
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 3.5,
+          children: presets.map((p) {
+            final isActive = currentLabel == p.$1;
+            return GestureDetector(
+              onTap: () => _applyPreset(context, p.$2, p.$3, p.$1),
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: isActive ? const LinearGradient(
+                      colors: [_forest, _emerald],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight) : null,
+                  color: isActive ? null : const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: isActive ? Colors.transparent : _border),
+                ),
+                child: Text(p.$1,
+                  style: TextStyle(
+                    color: isActive ? Colors.white : _ink,
+                    fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 10),
+        const Divider(color: Color(0xFFF3F4F6)),
+        const SizedBox(height: 6),
+
+        // Custom date row
+        GestureDetector(
+          onTap: () => _pickCustom(context),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _border),
+            ),
+            child: Row(children: [
+              const Icon(Icons.edit_calendar_rounded,
+                  color: _forest, size: 18),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Pick a specific date...',
+                  style: TextStyle(color: _ink, fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: _muted, size: 20),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FILTER CHIP
+// ═════════════════════════════════════════════════════════════════════════════
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.accentColor,
+    this.isIncomplete = false,
+  });
+
+  final String     label;
+  final bool       selected;
+  final VoidCallback onTap;
+  final Color?     accentColor;
+  final bool       isIncomplete;
+
+  static const _incompleteGrad = [Color(0xFFB45309), Color(0xFFD97706)];
+  static const _defaultGrad    = [_forest, _emerald];
+
+  @override
+  Widget build(BuildContext context) {
+    final grad = isIncomplete ? _incompleteGrad : _defaultGrad;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin:    const EdgeInsets.only(right: 8),
+        padding:   const EdgeInsets.symmetric(horizontal: 13, vertical: 0),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: selected
+              ? LinearGradient(
+                  colors: grad,
+                  begin: Alignment.topLeft,
+                  end:   Alignment.bottomRight,
+                )
+              : null,
+          color:         selected ? null : _surface,
+          borderRadius:  BorderRadius.circular(20),
+          border:        Border.all(
+            color: selected ? Colors.transparent : _border,
+          ),
+          boxShadow: selected
+              ? [BoxShadow(
+                  color: (isIncomplete
+                      ? const Color(0xFFB45309)
+                      : _forest).withValues(alpha: 0.22),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                )]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color:      selected ? Colors.white : (accentColor ?? _ink),
+            fontSize:   12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -20,22 +20,52 @@ async function generateToken(branchId, date, transaction) {
 
 // Include options reused across queries
 const defaultInclude = [
-  { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
+  { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price', 'category'] },
   { model: Staff, as: 'staff', attributes: ['id', 'name'] },
 ];
 
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
 exports.list = async (req, res) => {
   try {
-    const { branchId, date, status } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+    const { branchId, date, startDate, endDate, status, serviceCategory, incomplete } = req.query;
+    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });
+
+    // Date range: startDate/endDate take precedence over single `date`
+    const dateFilter = startDate
+      ? (endDate && endDate !== startDate
+          ? { [Op.between]: [startDate, endDate] }
+          : startDate)
+      : (date || today());
+
+    const where = {
       branch_id: branchId,
-      check_in_date: date || today(),
+      check_in_date: dateFilter,
     };
-    if (status) where.status = status;
+
+    // incomplete=true → waiting/serving entries with no staff assigned
+    if (incomplete === 'true' || incomplete === '1') {
+      where.status = { [Op.in]: ['waiting', 'serving'] };
+      where.staff_id = { [Op.is]: null };
+    } else if (status) {
+      where.status = status;
+    }
+
+    // Build include array – optionally filter by service category
+    const include = [
+      {
+        model: Service,
+        as: 'service',
+        attributes: ['id', 'name', 'duration_minutes', 'price', 'category'],
+        ...(serviceCategory
+          ? { where: { category: serviceCategory }, required: true }
+          : {}),
+      },
+      { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+    ];
 
     const queue = await WalkIn.findAll({
       where,
-      include: defaultInclude,
+      include,
       order: [['createdAt', 'ASC']],
     });
 

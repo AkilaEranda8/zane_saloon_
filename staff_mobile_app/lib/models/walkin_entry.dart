@@ -8,6 +8,7 @@ class WalkInEntry {
     required this.branchId,
     required this.serviceId,
     required this.serviceName,
+    required this.serviceCategory,
     required this.staffId,
     required this.staffName,
     required this.estimatedWait,
@@ -25,6 +26,7 @@ class WalkInEntry {
   final String branchId;
   final String serviceId;
   final String serviceName;
+  final String serviceCategory;
   final String staffId;
   final String staffName;
   final int estimatedWait;
@@ -123,6 +125,7 @@ class WalkInEntry {
       branchId: '${json['branch_id'] ?? ''}',
       serviceId: '${json['service_id'] ?? service['id'] ?? ''}',
       serviceName: displayName,
+      serviceCategory: '${service['category'] ?? ''}',
       staffId: '${json['staff_id'] ?? staff['id'] ?? ''}',
       staffName: '${staff['name'] ?? ''}',
       estimatedWait: int.tryParse('${json['estimated_wait'] ?? 0}') ?? 0,
@@ -150,6 +153,7 @@ class WalkInEntry {
       'service': {
         'id': int.tryParse(serviceId) ?? serviceId,
         'name': serviceName,
+        'category': serviceCategory,
       },
     };
     if (staffId.isNotEmpty) {

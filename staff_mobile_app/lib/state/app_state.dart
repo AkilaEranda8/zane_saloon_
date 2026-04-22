@@ -716,6 +716,8 @@ class AppState extends ChangeNotifier {
   Future<List<WalkInEntry>> loadWalkIns({
     required String branchId,
     String? date,
+    String? startDate,
+    String? endDate,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -725,6 +727,8 @@ class AppState extends ChangeNotifier {
       token: token,
       branchId: branchId,
       date: date,
+      startDate: startDate,
+      endDate: endDate,
     );
   }
 
