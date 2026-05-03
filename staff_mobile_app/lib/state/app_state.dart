@@ -13,6 +13,7 @@ import '../models/staff_commission_summary.dart';
 import '../models/staff_member.dart';
 import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
+import '../services/biometric_service.dart';
 import '../services/mobile_api.dart';
 import '../services/notification_service.dart';
 import '../utils/appointment_notes.dart';
@@ -206,10 +207,24 @@ class AppState extends ChangeNotifier {
       }
       await _persistSession(_currentUser!);
       unawaited(_registerFcmToken(token));
+      unawaited(BiometricService.instance.saveCredentials(username, password));
       notifyListeners();
       return true;
     } catch (e) {
       _lastError = _userFacingApiError(e);
+      return false;
+    }
+  }
+
+  /// Authenticate with biometrics then re-login using saved credentials.
+  Future<bool> tryBiometricRelogin() async {
+    try {
+      final creds = await BiometricService.instance.loadCredentials();
+      if (creds == null) return false;
+      final ok = await BiometricService.instance.authenticate();
+      if (!ok) return false;
+      return loginStaff(creds['username']!, creds['password']!);
+    } catch (_) {
       return false;
     }
   }
@@ -223,7 +238,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void logout() {
+  void logout({bool clearBiometrics = false}) {
     final token = _currentUser?.authToken;
     if (token != null && token.isNotEmpty) {
       _api.removeFcmToken(token: token);
@@ -233,6 +248,7 @@ class AppState extends ChangeNotifier {
     _appointments.clear();
     _services.clear();
     _clearPersistedSession();
+    if (clearBiometrics) BiometricService.instance.clearCredentials();
     notifyListeners();
   }
 

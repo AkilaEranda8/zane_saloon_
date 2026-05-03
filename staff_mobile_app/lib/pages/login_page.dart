@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../pages/dashboard_page.dart';
+import '../services/biometric_service.dart';
 import '../state/app_state.dart';
 
 class LoginPage extends StatefulWidget {
@@ -17,6 +18,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _loading = false;
+  bool _bioLoading = false;
+  bool _bioAvailable = false;
   String? _error;
 
   late AnimationController _entranceController;
@@ -88,6 +91,25 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         _entranceController.forward();
       }
     });
+    _checkBioAvailable();
+  }
+
+  Future<void> _checkBioAvailable() async {
+    final avail = await BiometricService.instance.isAvailable();
+    final hasCreds = await BiometricService.instance.hasCredentials();
+    if (mounted) setState(() => _bioAvailable = avail && hasCreds);
+  }
+
+  Future<void> _handleBiometric() async {
+    setState(() { _bioLoading = true; _error = null; });
+    final ok = await AppStateScope.of(context).tryBiometricRelogin();
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const DashboardPage()));
+    } else {
+      setState(() { _bioLoading = false; _error = 'Biometric sign-in failed'; });
+    }
   }
 
   @override
@@ -508,6 +530,52 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
             // Login button
             _buildLoginButton(),
+
+            // Biometric button (shown only if available)
+            if (_bioAvailable) ...[
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _bioLoading ? null : _handleBiometric,
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white.withValues(alpha: 0.06),
+                    border: Border.all(
+                      color: const Color(0xFFC9956C).withValues(alpha: 0.4),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Center(
+                    child: _bioLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFC9956C),
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.fingerprint_rounded,
+                                  color: Color(0xFFC9956C), size: 24),
+                              SizedBox(width: 10),
+                              Text(
+                                'Sign in with Biometrics',
+                                style: TextStyle(
+                                  color: Color(0xFFC9956C),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ],
 
             const SizedBox(height: 20),
 
